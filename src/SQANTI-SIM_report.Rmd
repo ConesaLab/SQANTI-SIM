@@ -1,0 +1,204 @@
+---
+title: "SQANTI-SIM OUTPUT COMPARISON REPORT"
+author: "`r paste0('  ','Author', ': ',Sys.getenv('USERNAME'))`"
+date: "`r paste0('  ','Date', ': ', format(Sys.time(), '%d %B %Y'))`"
+output:
+  html_document:
+    number_sections: false
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    theme: spacelab
+---
+
+<!-- Basic setting -->
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, cache = FALSE, echo = FALSE)
+```
+
+<!-- Report generation -->
+
+## Summary
+
+```{r, results='asis'}
+n.sim.trans <- nrow(res.full$data.summary)
+n.known.trans <- nrow(res.full$data.summary[which(res.full$data.summary$sim_type == "known"),])
+n.novel.trans <- nrow(res.full$data.summary[which(res.full$data.summary$sim_type == "novel"),])
+n.class.trans <- nrow(data.query)
+
+cat('\n\n**Number of simulated transcripts**: ', n.sim.trans, '\n\n')
+cat('\n\n**Number of known transcripts**: ', n.known.trans, '\n\n')
+cat('\n\n**Number of novel transcripts**: ', n.novel.trans, '\n\n')
+cat('\n\n**Number of reconstructed transcripts**: ', n.class.trans, '\n\n')
+```
+
+## Simulated counts distribution
+
+```{r}
+p1
+```
+
+## Isoform classification distribution of reconstructed transcripts
+
+```{r}
+p2
+```
+
+## Evaluation of simulation 
+
+Simulated transcript were grouped in know simulated transcripts which appear in the reference annotation GTF and novel simulated transcripts that were deleted from the annotation. The following metrics were computed:
+
+- **Number of isoforms simulated**: Total number of simulated isoforms
+- **True Positive isoforms (TP)**: Isoforms that match junctions with a simulated transcript and its TSS and TTS is within the 50bp threshold
+- **Partial True Positive isoforms (PTP)**: Isoforms that match junctions but the TSS and TTS are beyond the threshold
+- **False Negative isoforms (FN) **: Isoforms that were simulated but not detected
+- **False Positive (FP)**: Transcript that were detected but not simulated
+- **Sensitivity**: TP/Number of simulated transcripts
+- **Precision**: TP/Detected isoforms
+- **F-score**: Harmonic mean of precision and sensitivity
+- **False Discovery Rate**: (FP+PTP)/Detected isoforms
+- **Positive Detection Rate**: (TP + PTP)/Number of simulated transcripts
+- **False Detection Rate**: FP/Detected isoforms
+
+## Performance metrics
+
+### Full results
+
+```{r}
+t1
+```
+
+### Above min. supp. results
+
+```{r}
+t2
+```
+
+```{r, results = 'hide'}
+radar.palette <- c("Known"="#750037", "Novel"='#052240', "FSM"="#6BAED6", "ISM"="#FC8D59", "NIC"="#78C679", 
+                "NNC"="#EE6A50", "Genic\nGenomic"="#969696", "Antisense"="#66C2A4", "Fusion"="goldenrod1",
+                "Intergenic" = "darksalmon", "Genic\nIntron"="#41B6C4")
+
+sqantisim.stats <- rbind(res.full$sqantisim.stats, res.min$sqantisim.stats)[c("Sensitivity", "Precision", "F-score", "Positive_Detection_Rate", "Sensitivity1"),]
+rownames(sqantisim.stats) <- c("Sn", "Pr", "F-score", "PDR", "Sn(min.supp.)")
+sqantisim.stats <- sqantisim.stats[c("F-score", "Sn", "Sn(min.supp.)", "Pr", "PDR"), which(!is.na(sqantisim.stats["F-score",]))]
+sqantisim.stats.t <- as.data.frame(t(as.matrix(sqantisim.stats)))
+sqantisim.stats.t[is.na(sqantisim.stats.t)] <- NA
+sqantisim.stats.t <- rbind(1, 0, sqantisim.stats.t)
+
+n <- length(rownames(sqantisim.stats.t)[rownames(sqantisim.stats.t) %in% c("Known", "Novel")])
+par(mar=c(1,1,1,1), mfrow=c(1,n))
+for (i in 1:n){
+  radarchart(
+  sqantisim.stats.t[c(1, 2, i+2),], axistype = 1,
+  pcol = radar.palette[[rownames(sqantisim.stats.t)[i+2]]], pfcol = scales::alpha(radar.palette[[rownames(sqantisim.stats.t)[i+2]]], 0.5), plwd = 2, plty = 1,
+  # Customize the grid
+  cglcol = "grey", cglty = 1, cglwd = 0.8,
+  # Customize the axis
+  axislabcol = "grey", 
+  # Variable labels
+  vlcex = 0.7, vlabels = colnames(sqantisim.stats.t[c(1, 2, i+2),]),
+  caxislabels = c(0, 0.25, 0.5, 0.75, 1), title = rownames(sqantisim.stats.t)[i+2]
+)
+}
+
+n <- length(rownames(sqantisim.stats.t)[rownames(sqantisim.stats.t) %in% c("1", "2", "Known", "Novel")])
+par(mar=c(1,1,1,1), mfrow=c(2,ceiling(n/2)))
+for (i in (1+n-2):(nrow(sqantisim.stats.t)-2)){
+  print(i)
+  radarchart(
+  sqantisim.stats.t[c(1, 2, i+2),], axistype = 1,
+  pcol = radar.palette[[rownames(sqantisim.stats.t)[i+2]]], pfcol = scales::alpha(radar.palette[[rownames(sqantisim.stats.t)[i+2]]], 0.5), plwd = 2, plty = 1,
+  # Customize the grid
+  cglcol = "grey", cglty = 1, cglwd = 0.8,
+  # Customize the axis
+  axislabcol = "grey", 
+  # Variable labels
+  vlcex = 0.7, vlabels = colnames(sqantisim.stats.t[c(1, 2, i+2),]),
+  caxislabels = c(0, 0.25, 0.5, 0.75, 1), title = rownames(sqantisim.stats.t)[i+2]
+)
+}
+```
+
+### Plots full results {.tabset}
+
+#### Mono- or multi-exon
+
+```{r}
+p3
+```
+
+#### Canonical Junctions
+
+```{r}
+p4
+```
+
+#### Number of exons
+
+```{r}
+grid.arrange(p5.1, p5.2, ncol = 2, nrow = 1)
+```
+
+#### Transcript length
+
+```{r}
+grid.arrange(p6.1, p6.2, ncol = 2, nrow = 1)
+```
+
+#### Expression level
+
+```{r}
+grid.arrange(p7.1, p7.2, ncol = 2, nrow = 1)
+```
+
+#### Isoform complexity
+
+```{r}
+grid.arrange(p8.1, p8.2, ncol = 2, nrow = 1)
+```
+
+
+```{r, results='asis'}
+if ('within_cage_peak' %in% colnames(data.index)){
+  cat('\n\n#### CAGE Peak Support\n\n')
+  print(p9)
+  print(p10)
+}
+
+if ('min_cov' %in% colnames(data.index)){
+  cat('\n\n#### Splice Junction Coverage\n\n')
+  print(p11)
+}
+
+if ('ratio_TSS' %in% colnames(data.index)){
+  cat('\n\n#### TSS ratio\n\n')
+  print(p12)
+}
+```
+```{r, results='asis'}
+if (nrow(res.min$data.summary) > 0){
+  cat('\n\n### Plots above min. supp. results {.tabset}\n\n')
+  cat('\n\n#### Mono- or multi-exon\n\n')
+  print(p3.min)
+  
+  cat('\n\n#### Number of exons\n\n')
+  print(grid.arrange(p5.min.1, p5.min.2, ncol = 2, nrow = 1))
+  
+  cat('\n\n#### Transcript length\n\n')
+  print(grid.arrange(p6.min.1, p6.min.2, ncol = 2, nrow = 1))
+  
+  cat('\n\n#### Expression level\n\n')
+  print(grid.arrange(p7.min.1, p7.min.2, ncol = 2, nrow = 1))
+  
+  cat('\n\n#### Isoform complexity\n\n')
+  print(grid.arrange(p8.min.1, p8.min.2, ncol = 2, nrow = 1))
+}
+
+if (quant.file != "none"){
+  cat('\n\n### Evaluation of quantification\n\n')
+  print(p13)
+}
+```
+
