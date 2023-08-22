@@ -2,10 +2,10 @@
 """
 design_simulation.py
 
-Modifies GTF reference annotation and generate expression values for 
-the simulation step
+Generates a reduced GTF annotation file, excluding novel isoforms according
+ to user-specified novelty types and assigns expression values
 
-Author: Jorge Mestre Tomas (jormart2@alumni.uv.es)
+Author: Jorge Mestre Tomas (jorge.mestre.tomas@csic.es)
 """
 
 import numpy
@@ -15,8 +15,10 @@ import pysam
 import random
 import subprocess
 import sys
+from BCBio import GFF as BCBio_GFF
 from bisect import bisect_left
 from collections import defaultdict
+
 
 MIN_SIM_LEN = 200 # Minimum length of transcripts to simulate
 
@@ -426,7 +428,7 @@ def create_expr_file_nbinom(f_idx: str, args: list):
     trans_index.to_csv(f_idx, sep="\t", header=True, index=False, na_rep="NA")
 
 
-def create_expr_file_sample(f_idx: str, args: list, tech: str):
+def create_expr_file_sample(f_idx: str, args: list):
     """ Expression matrix - sample mode
 
     Modifies the index file adding the counts and TPM for the transcripts that
@@ -435,7 +437,6 @@ def create_expr_file_sample(f_idx: str, args: list, tech: str):
     Args:
         f_idx (str) index file name
         args (list) reference transcriptome and real reads
-        tech (str) sequencing platform {pb, ont}
     """
 
     def sample_coverage(row):
@@ -446,32 +447,31 @@ def create_expr_file_sample(f_idx: str, args: list, tech: str):
         else:
             coverage = 0
         return coverage
-
-    # Extract fasta transcripts
-    ref_t = os.path.splitext(args.gtf)[0] + ".transcripts.fa"
-    if os.path.exists(ref_t):
-        print("[SQANTI-SIM] WARNING: %s already exists. Overwritting!" %(ref_t), file=sys.stderr)
-
-    cmd = ["gffread", "-w", str(ref_t), "-g", str(args.genome), str(args.gtf)]
-    cmd = " ".join(cmd)
-    sys.stdout.flush()
-    if subprocess.check_call(cmd, shell=True) != 0:
-        print("[SQANTI-SIM] ERROR running gffread: {0}".format(cmd), file=sys.stderr)
-        sys.exit(1)
-
-    if args.mapped_reads:
-        sam_file = args.mapped_reads
-        if not os.path.exists(args.mapped_reads):
-            print("[SQANTI-SIM] ERROR: %s does not exist" %(args.mapped_reads), file=sys.stderr)
+    
+    if args.expr_file:
+        if not os.path.isfile(args.expr_file):
+            print("[SQANTI-SIM] ERROR: The specified file %s does not exist. Please provide the correct file name or ensure that the file exists in the specified directory." %(args.expr_file), file=sys.stderr)
             sys.exit(1)
-    else:
-        # Align with minimap
-        if tech == "pb":
-            sam_file = os.path.join(args.dir, (os.path.splitext(os.path.basename(args.pb_reads))[0] + "_sqanti-sim_align.sam"))
+
+    elif args.long_reads:
+        # Extract fasta transcripts
+        ref_t = os.path.splitext(args.gtf)[0] + ".transcripts.fa"
+        if os.path.exists(ref_t):
+            print("[SQANTI-SIM] WARNING: %s already exists. Overwritting!" %(ref_t), file=sys.stderr)
+
+        cmd = ["gffread", "-w", str(ref_t), "-g", str(args.genome), str(args.gtf)]
+        cmd = " ".join(cmd)
+        sys.stdout.flush()
+        if subprocess.check_call(cmd, shell=True) != 0:
+            print("[SQANTI-SIM] ERROR running gffread: {0}".format(cmd), file=sys.stderr)
+            sys.exit(1)
+
+        if args.pb:
+            sam_file = os.path.join(args.dir, (os.path.splitext(os.path.basename(args.long_reads))[0] + "_sqanti-sim_align.sam"))
             cmd = [
                 "minimap2",
                 ref_t,
-                args.pb_reads,
+                args.long_reads,
                 "-x",
                 "map-pb",
                 "-a",
@@ -481,12 +481,12 @@ def create_expr_file_sample(f_idx: str, args: list, tech: str):
                 "-t",
                 str(args.cores),
             ]
-        elif tech == "ont":
-            sam_file = os.path.join(args.dir, (os.path.splitext(os.path.basename(args.ont_reads))[0] + "_sqanti-sim_align.sam"))
+        elif args.ont:
+            sam_file = os.path.join(args.dir, (os.path.splitext(os.path.basename(args.long_reads))[0] + "_sqanti-sim_align.sam"))
             cmd = [
                 "minimap2",
                 ref_t,
-                args.ont_reads,
+                args.long_reads,
                 "-x",
                 "map-ont",
                 "-a",
@@ -503,35 +503,75 @@ def create_expr_file_sample(f_idx: str, args: list, tech: str):
             print("[SQANTI-SIM] ERROR running minimap2: {0}".format(cmd), file=sys.stderr)
             sys.exit(1)
 
-    # Raw counts -> Count only primary alignments
-    trans_counts = defaultdict(lambda: 0)
-    with pysam.AlignmentFile(sam_file, "r") as sam_file_in:
-        for align in sam_file_in:
-            trans_id = align.reference_name
+        # Raw counts -> Count only primary alignments
+        trans_counts = defaultdict(lambda: 0)
+        with pysam.AlignmentFile(sam_file, "r") as sam_file_in:
+            for align in sam_file_in:
+                trans_id = align.reference_name
 
-            if (
-                align.reference_id == -1
-                or align.is_supplementary
-                or align.is_secondary
-            ):
-                continue
-            trans_counts[trans_id] += 1
-    #os.remove(sam_file)
-    #os.remove(ref_t)
+                if (
+                    align.reference_id == -1
+                    or align.is_supplementary
+                    or align.is_secondary
+                ):
+                    continue
+                trans_counts[trans_id] += 1
+        #os.remove(sam_file)
+        #os.remove(ref_t)
 
-    # Empirical expression values
-    expr_distr = list(trans_counts.values())
-    expr_distr.sort()
+        # Match the gene name with the isoform name to obtain the isoform complexity distribution
+        trans_to_gene = defaultdict(lambda: str())
+        limit_info = dict(gff_type=["transcript"])
+        in_handle=open(args.gtf)
+        for rec in BCBio_GFF.parse(in_handle, limit_info=limit_info, target_lines=1):
+            gene_id=rec.features[0].qualifiers["gene_id"][0]
+            trans_id=rec.features[0].qualifiers["transcript_id"][0]
+            trans_to_gene[trans_id] = gene_id
+
+        # Write expression file
+        args.expr_file = os.path.join(args.dir, "sqanti-sim_expression.tsv")
+        with open(args.expr_file, 'w') as f:
+            f.write("gene_id\ttranscript_id\tcounts\n")
+            for trans_id, counts in trans_counts.items():
+                gene_id = trans_to_gene[trans_id]
+                f.write(f'{gene_id}\t{trans_id}\t{counts}\n')
+        f.close()
+
+    else:
+        src_dir = os.path.dirname(os.path.realpath(__file__))
+        if args.ont:
+            if args.read_type == "dRNA":
+                args.expr_file = os.path.join(src_dir, "../pre-trained_models/human_WTC11_ONT_dRNA_expression.tsv")
+                if not os.path.isfile(args.expr_file):
+                    args.expr_file = os.path.join(src_dir, "../pre-trained_models/human_WTC11_ONT_dRNA_expression.tsv.gz")
+            else:
+                args.expr_file = os.path.join(src_dir, "../pre-trained_models/human_WTC11_ONT_cDNA_expression.tsv")
+                if not os.path.isfile(args.expr_file):
+                    args.expr_file = os.path.join(src_dir, "../pre-trained_models/human_WTC11_ONT_cDNA_expression.tsv.gz")
+             
+        else:
+            args.expr_file = os.path.join(src_dir, "../pre-trained_models/human_WTC11_PacBio_expression.tsv")
+            if not os.path.isfile(args.expr_file):
+                args.expr_file = os.path.join(src_dir, "../pre-trained_models/human_WTC11_PacBio_expression.tsv.gz")
+    
+    # Read expression file
+    if args.expr_file.endswith(".gz"):
+        expr_df = pandas.read_csv(args.expr_file, compression='gzip', sep="\t", header=0, dtype={"gene_id":str, "transcript_id":str})
+    else:
+        expr_df = pandas.read_csv(args.expr_file, sep="\t", header=0, dtype={"gene_id":str, "transcript_id":str})
+    expr_df = expr_df.loc[expr_df["counts"] >= 1,]
+
+    # Default trans_number
     if args.trans_number:
         n_trans = args.trans_number
     else:
-        n_trans = len(expr_distr)
+        n_trans = len(expr_df["counts"])
 
     # Read transcripts from index file
     novel_trans = []
     known_trans = []
     novel_genes = set()
-    trans_to_gene = defaultdict(lambda: str())
+    #trans_to_gene = defaultdict(lambda: str())
     trans_by_gene = defaultdict(lambda: [])
     with open(f_idx, "r") as f_in:
         skip = f_in.readline()
@@ -546,11 +586,11 @@ def create_expr_file_sample(f_idx: str, args: list, tech: str):
             if sim_type == "novel":
                 novel_trans.append(line[j])
                 novel_genes.add(line[k])
-                trans_to_gene[line[j]] = line[k]
+                #trans_to_gene[line[j]] = line[k]
                 trans_by_gene[line[k]].append(line[j])
             elif int(line[l]) >= MIN_SIM_LEN:
                 known_trans.append(line[j])
-                trans_to_gene[line[j]] = line[k]
+                #trans_to_gene[line[j]] = line[k]
                 trans_by_gene[line[k]].append(line[j])
     f_in.close()
 
@@ -568,9 +608,7 @@ def create_expr_file_sample(f_idx: str, args: list, tech: str):
     if args.iso_complex:
         # Analyze the isoform complexity of expressed genes (dif expressed transcript per gene)
         gene_isoforms_counts = defaultdict(lambda: 0)
-        for i in trans_counts:
-            gene_id = trans_to_gene[i]
-            if gene_id:
+        for gene_id in expr_df["gene_id"]:
                 gene_isoforms_counts[gene_id] += 1
         complex_distr = list(gene_isoforms_counts.values())
 
@@ -652,31 +690,46 @@ def create_expr_file_sample(f_idx: str, args: list, tech: str):
         known_trans = known_trans[: (n_trans - len(novel_trans))]
     
     trans_index = pandas.read_csv(f_idx, sep="\t", header=0, dtype={"chrom":str})
+
+    # Simulate expression values from ECDF
+    unique_expr_values, counts = numpy.unique(numpy.sort(expr_df["counts"]), return_counts=True)
+    unique_expr_values = unique_expr_values.tolist()
+    expr_ecdf = numpy.cumsum(counts) / len(expr_df["counts"])
+
     # Give same or different expression to novel and known transcripts
-    if args.diff_exp:
-        # Generate a vector of inverse probabilities to assign lower TPM values to novel transcripts and higher to known transcripts
-        uniq = list(set(expr_distr))
-        prob = numpy.linspace(start=args.low_prob, stop=args.high_prob, num=len(uniq))
-        #prob = numpy.geomspace(start=args.low_prob, stop=args.high_prob, num=len(uniq))
+    # args.diff_exp is a parameter to control the strength of the relationship
+    # args.diff_exp = 0 means no bias for novel/known expression distribution
+    novel_expr = []
+    known_expr = []
+    simulated_novel = 0
+    simulated_known = 0
 
-        # Choose expression values for novel and known transcripts
-        n_novel = 0
-        n_known = 0
-        novel_expr = []
-        known_expr = []
-        while n_novel < len(novel_trans) or n_known < len(known_trans):
-            s = random.choice(expr_distr)
-            r = random.uniform(0, 1)
-            if r > prob[uniq.index(s)] and n_novel < len(novel_trans):
-                novel_expr.append(s)
-                n_novel += 1
-            elif n_known < len(known_trans):
-                known_expr.append(s)
-                n_known += 1
+    while simulated_novel < len(novel_trans) or simulated_known < len(known_trans):
+        # Generate random samples from the joint ECDF (inverse transfrom sampling)
+        random_sample = numpy.random.uniform(0.0, 1.0, size=1)
+        index = numpy.searchsorted(expr_ecdf, random_sample, side = "left")[0]
+        sampled_value = unique_expr_values[index]
+        
+        # Calculate the odds of assigning to novel and known based on the index
+        odds_type_A = (len(expr_ecdf) - index) / len(expr_ecdf)
+        odds_type_B = 1 - odds_type_A
+        
+        # Adjust and normalize the odds based on the scaling factor
+        odds_type_A = odds_type_A ** args.diff_exp
+        odds_type_B = odds_type_B ** args.diff_exp
+        
+        total_odds = odds_type_A + odds_type_B
+        odds_type_A /= total_odds
+        odds_type_B /= total_odds
+        
+        # Determine if it should be assigned to novel or known transcripts
+        if numpy.random.uniform(0, 1) < odds_type_A and simulated_novel < len(novel_trans):
+            novel_expr.append(sampled_value)
+            simulated_novel += 1
 
-    else: # No bias for novel/known expression distribution
-        novel_expr = random.choices(expr_distr, k = len(novel_trans))
-        known_expr = random.choices(expr_distr, k = len(known_trans))
+        elif simulated_known < len(known_trans):
+            known_expr.append(sampled_value)
+            simulated_known += 1
     
     trans_index["requested_counts"] = trans_index.apply(sample_coverage, axis=1)
     n_reads = trans_index["requested_counts"].sum()

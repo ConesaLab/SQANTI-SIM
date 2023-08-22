@@ -14,9 +14,9 @@
 
 ***
 
-*SQANTI-SIM* is a simulator of controlled novelty and degradation of transcripts sequenced by long reads. It is a wrapper tool for RNA-Seq long-reads simulators such as [IsoSeqSim](https://github.com/yunhaowang/IsoSeqSim) and [NanoSim](https://github.com/bcgsc/NanoSim) (formerly Trans-NanoSim) to simulate transcripts based on the SQANTI3 structural categories ([publication](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5848618/) and [code repository](https://github.com/ConesaLab/SQANTI3)).
+SQANTI-SIM is an open-source long-read RNA-seq (LRS) simulation tool designed to generate high-fidelity ONT and PacBio transcriptome long reads with precise control over transcript novelty based on [SQANTI3](https://github.com/ConesaLab/SQANTI3) structural categories, along with  orthogonal data supporting both known and novel transcripts.
 
-SQANTI-SIM uses NanoSim and IsoSeqSim to simulate PacBio cDNA reads and Nanopore cDNA and dRNA reads, and implements a strategy to simulate novel transcripts based on SQANTI structural categories. Unlike current lrRNA-seq simulators, SQANTI-SIM simulates well-grounded novel transcripts and permits the assessment of the capacity of any lrRNA-seq transcript reconstruction tool to detect different types of transcripts not yet present in reference annotations.
+By building upon the capabilities of [NanoSim](https://github.com/bcgsc/NanoSim), [PBSIM3](https://github.com/yukiteruono/pbsim3), and [IsoSeqSim](https://github.com/yunhaowang/IsoSeqSim) to simulate long reads using the provided GTF, SQANTI-SIM generates both simulated reads and a reduced GTF with excluded transcripts flagged as novel. Additionally, SQANTI-SIM goes a step further by generating matching Illumina and CAGE data for the simulated LRS, thus faithfully reproducing LRS transcriptome datasets.
 
 ![small_workflow](https://github.com/ConesaLab/SQANTI-SIM/blob/main/docs/small_workflow.png)
 
@@ -26,13 +26,39 @@ Please refer to [Wiki](https://github.com/ConesaLab/SQANTI-SIM/wiki) for how to 
 
 ## Change Log
 
-Current version (12/09/2022): 0.1.0
+Current version (25/07/2023): **0.2.0**
 
 Updates, patches and releases:
 
-**0.1.0**:
+### Version 0.2.0 (25/07/2023)
+
+#### :rocket: New Features and Major Changes
+
+- Implemented the simulation of **CAGE-seq** orthogonal data (`--CAGE`) when running SQANTI-SIM in *sample* mode.
+- Added PacBio long read simulation using **PBSIM3** (`--pbsim`).
+- Added the `full-sim` mode, which executes the *classif*, *design* and *sim* modules, allowing users to run the complete simulation with just **one simple instruction**.
+- Provided pre-trained models and characterized datasets of the WTC11 human cell line.
+- Updated pre-trained NanoSim models with WTC11 human cell line dRNA and cDNA data. Additionally, users have the option to utilize their specific pre-trained NanoSim models using the `--nanosim_model` parameter.
+- Enhanced the `--diff_exp` parameter by deprecating `--low_prob` and `--high_prob`. Now, `--diff_exp` is a numeric value that allows users to adjust with a single parameter the bias of known and novel expression levels.
+
+#### :bug: Bug Fixes and Minor Changes
+
+- Added the option `--expr_file` to provide an expression distribution file to `sqanti-sim.py design sample`  to avoid mapping the same reads in different executions.
+- When using the `--long_reads` option in `sqanti-sim.py design sample` mode, SQANTI-SIM now generates an expression file named "sqanti-sim_expression.tsv." This file can be reused in future executions using `--expr_file`.
+- Added a default number of novel transcripts to simulate when the user does not specify any.
+- Added additional example files, providing users with practical examples.
+- Updated the classification algorithm to the latest SQANTI3 release, version 5.1.2, ensuring up-to-date transcript classification results.
+- Updated the `sqanti-sim.py design sample` random expression sampling by implementing inverse transform sampling from ECDFs.
+- Fixed Partial True Positives (PTP) and Positive Detection Rate (PDR) metrics to consider only non-redundant transcript models.
+- Fixed conda environment installation issues related to bcbio-gff and updated dependencies.
+- Fixed SQANTI-SIM Report generating empty tables when not all structural categories were detected. 
+
+***
+
+### Version 0.1.0 (14/07/2022)
+
 - :tada: Initial release!
 
 ## How to cite SQANTI-SIM
 
-SQANTI-SIM will be included in the upcoming SQANTI3 paper
+SQANTI-SIM paper in progress

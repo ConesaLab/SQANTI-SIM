@@ -5,7 +5,7 @@
 #                                     #
 #######################################
 
-#Author: Jorge Mestre Tomas (jormart2@alumni.uv.es)
+#Author: Jorge Mestre Tomas (jorge.mestre.tomas@csic.es)
 
 suppressMessages(library(polyester))
 suppressMessages(library(Biostrings))

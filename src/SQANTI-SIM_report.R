@@ -4,7 +4,7 @@
 #                                     #
 #######################################
 
-# Author: Jorge Mestre Tomas (jormart2@alumni.uv.es)
+#Author: Jorge Mestre Tomas (jorge.mestre.tomas@csic.es)
 
 #######################################
 #                                     #
@@ -16,6 +16,7 @@ suppressMessages(library(dplyr))
 suppressMessages(library(DT))
 suppressMessages(library(fmsb))
 suppressMessages(library(ggplot2))
+suppressMessages(library(ggpubr))
 suppressMessages(library(gridExtra))
 suppressMessages(library(knitr))
 suppressMessages(library(rmarkdown))
@@ -106,85 +107,6 @@ isoform_level_metrics <- function(data.query, data.index, MAX_TSS_TTS_DIFF, min_
   novel.matches <- matches[which(matches$sim_type == "novel"),]
   novel.perfect.matches <- perfect.matches[which(perfect.matches$sim_type == "novel"),]
   
-  #  Compute metrics
-  sqantisim.stats <- data.frame(init=c())
-  for (sc in xaxislabelsF1){
-    
-    if (sc == 'FSM') {
-      n.sim <- nrow(data.known)
-      TP <- nrow(known.perfect.matches[which(known.perfect.matches$structural_category.x == sc),])
-      PTP <- nrow(known.matches[which(known.matches$structural_category.x == sc),]) - TP
-      FP <- nrow(data.query[which(data.query$structural_category == sc),]) - TP - PTP
-    } else {
-      n.sim <- nrow(data.novel[which(data.novel$structural_category == sc),])
-      TP <- nrow(novel.perfect.matches[which(novel.perfect.matches$structural_category.y == sc),])
-      PTP <- nrow(novel.matches[which(novel.matches$structural_category.y == sc),]) - TP
-      FP <- nrow(data.query[which(data.query$structural_category == sc),]) - TP - (nrow(novel.matches[which(novel.matches$structural_category.x == sc),]) - TP)
-    }
-    FN <- n.sim - TP
-
-    if (sum(n.sim, TP, PTP, FP, FN) > 0){
-      sqantisim.stats['Total', sc] <- n.sim
-      sqantisim.stats['TP', sc] <- TP
-      sqantisim.stats['PTP', sc] <- PTP
-      sqantisim.stats['FP', sc] <- FP
-      sqantisim.stats['FN', sc] <- FN
-      sqantisim.stats['Sensitivity', sc] <- TP/ (TP + FN)
-      sqantisim.stats['Precision', sc] <- TP/ (TP + PTP + FP)
-      sqantisim.stats['F-score', sc] <- 2*((sqantisim.stats['Sensitivity', sc]*sqantisim.stats['Precision', sc])/(sqantisim.stats['Sensitivity', sc]+sqantisim.stats['Precision', sc]))
-      sqantisim.stats['False_Discovery_Rate', sc] <- (FP + PTP) / (FP + PTP +  TP)
-      sqantisim.stats['Positive_Detection_Rate', sc] <- (TP + PTP) / n.sim
-      sqantisim.stats['False_Detection_Rate', sc] <- (FP) / (FP + PTP + TP)
-    }
-  }
-  
-  known.TP <- 0
-  known.PTP <- 0
-  known.FN <- 0
-  novel.TP <- 0
-  novel.PTP <- 0
-  novel.FN <- 0 
-  total.FP <- 0
-  for (sc in colnames(sqantisim.stats)){
-    if (sc == "FSM"){
-      known.TP <- known.TP + sqantisim.stats['TP', sc]
-      known.PTP <- known.PTP + sqantisim.stats['PTP', sc]
-      total.FP <- total.FP + sqantisim.stats['FP', sc]
-    }else{
-      novel.TP <- novel.TP + sqantisim.stats['TP', sc]
-      novel.PTP <- novel.PTP + sqantisim.stats['PTP', sc]
-      total.FP <- total.FP + sqantisim.stats['FP', sc]
-    }
-  }
-  
-  sqantisim.stats['Total', 'Known'] <-  nrow(data.known)
-  sqantisim.stats['TP', 'Known'] <- known.TP
-  sqantisim.stats['PTP', 'Known'] <- known.PTP
-  sqantisim.stats['FP', 'Known'] <- total.FP
-  sqantisim.stats['FN', 'Known'] <- nrow(data.known) - known.TP
-  sqantisim.stats['Precision', 'Known'] <- known.TP / (known.TP + known.PTP + total.FP + novel.PTP)
-  sqantisim.stats['Sensitivity', 'Known'] <- known.TP / (known.TP + sqantisim.stats['FN', 'Known'])
-  sqantisim.stats['F-score', 'Known'] <- 2*((sqantisim.stats['Sensitivity', 'Known']*sqantisim.stats['Precision', 'Known'])/(sqantisim.stats['Sensitivity', 'Known']+sqantisim.stats['Precision', 'Known']))
-  sqantisim.stats['False_Discovery_Rate', 'Known'] <- (total.FP + known.PTP) / (total.FP + known.PTP +  known.TP)
-  sqantisim.stats['Positive_Detection_Rate', 'Known'] <- (known.TP + known.PTP) / nrow(data.known)
-  sqantisim.stats['False_Detection_Rate', 'Known'] <- (total.FP) / (total.FP + known.PTP +  known.TP)
-  
-  sqantisim.stats['Total', 'Novel'] <-  nrow(data.novel)
-  sqantisim.stats['TP', 'Novel'] <- novel.TP
-  sqantisim.stats['PTP', 'Novel'] <- novel.PTP
-  sqantisim.stats['FP', 'Novel'] <- total.FP
-  sqantisim.stats['FN', 'Novel'] <- nrow(data.novel) - novel.TP
-  sqantisim.stats['Precision', 'Novel'] <- novel.TP / (novel.TP + novel.PTP + total.FP + known.PTP)
-  sqantisim.stats['Sensitivity', 'Novel'] <- novel.TP / (novel.TP + sqantisim.stats['FN', 'Novel'])
-  sqantisim.stats['F-score', 'Novel'] <- 2*((sqantisim.stats['Sensitivity', 'Novel']*sqantisim.stats['Precision', 'Novel'])/(sqantisim.stats['Sensitivity', 'Novel']+sqantisim.stats['Precision', 'Novel']))
-  sqantisim.stats['False_Discovery_Rate', 'Novel'] <- (total.FP + novel.PTP) / (total.FP + novel.PTP +  novel.TP)
-  sqantisim.stats['Positive_Detection_Rate', 'Novel'] <- (novel.TP + novel.PTP) / nrow(data.novel)
-  sqantisim.stats['False_Detection_Rate', 'Novel'] <- (total.FP) / (total.FP + novel.PTP +  novel.TP)
-  
-  col.order <- c("Known", "Novel", "FSM", "ISM", "NIC", "NNC", "Genic\nGenomic",  "Antisense", "Fusion","Intergenic", "Genic\nIntron")
-  row.order <- c('Total', 'TP', 'PTP', 'FP', 'FN', 'Sensitivity', 'Precision', 'F-score', 'False_Discovery_Rate', 'Positive_Detection_Rate', 'False_Detection_Rate')
-  sqantisim.stats <- sqantisim.stats[intersect(row.order, rownames(sqantisim.stats)), intersect(col.order, colnames(sqantisim.stats))]
-  
   # Summary dataframe
   plot.cols <- c("transcript_id", "gene_id", "structural_category", "exons", "length", "sim_type", "sim_counts")
   if ('within_CAGE_peak' %in% colnames(data.index)){
@@ -214,11 +136,113 @@ isoform_level_metrics <- function(data.query, data.index, MAX_TSS_TTS_DIFF, min_
     data.summary$sim_match_type <- factor(data.summary$sim_match_type, levels=c("TP_known", "FN_known", "TP_novel", "FN_novel"))
     
     data.summary$match_type <- "FN"
-    data.summary$match_type[which(data.summary$transcript_id %in% known.matches$transcript_id | data.summary$transcript_id %in% novel.matches$transcript_id)] <- "PTP"
+    
+    PTP <- unique(matches[!(matches$isoform %in% perfect.matches$isoform), c("transcript_id","chrom", "junctions")])
+    PTP$chrom_junc <- paste(PTP$chrom, PTP$junctions, sep = "_")
+    PTP <- PTP[!(PTP$chrom_junc %in% paste(perfect.matches$chrom, perfect.matches$junctions, sep = "_")), ]
+    
+    data.summary$match_type[data.summary$transcript_id %in% PTP$transcript_id] <- "PTP"
     data.summary$match_type[which(data.summary$transcript_id %in% known.perfect.matches$transcript_id | data.summary$transcript_id %in% novel.perfect.matches$transcript_id)] <- "TP"
   }
   
   data.summary <- merge(data.summary, perfect.matches[,c("isoform", "transcript_id")], by="transcript_id", all.x=T)
+  
+  #  Compute metrics
+  sqantisim.stats <- data.frame(init=c())
+  for (sc in xaxislabelsF1){
+    
+    if (sc == 'FSM') {
+      n.sim <- nrow(data.known)
+      TP <- sum(data.summary$match_type == "TP" & data.summary$sim_type == "known")
+      PTP <- sum(data.summary$match_type == "PTP" & data.summary$sim_type == "known")
+      FN <- sum(data.summary$match_type == "FN" & data.summary$sim_type == "known") + PTP
+      FP <- sum(!(data.query$isoform %in% data.summary$isoform) & data.query$structural_category == "FSM")
+    } else {
+      n.sim <- nrow(data.novel[which(data.novel$structural_category == sc),])
+      TP <- sum(data.summary$match_type == "TP" & data.summary$sim_type == "novel" & data.summary$structural_category == sc)
+      PTP <- sum(data.summary$match_type == "PTP" & data.summary$sim_type == "novel" & data.summary$structural_category == sc)
+      FN <- sum(data.summary$match_type == "FN" & data.summary$sim_type == "novel" & data.summary$structural_category == sc) + PTP
+      FP <- sum(!(data.query$isoform %in% data.summary$isoform) & data.query$structural_category == sc)
+    }
+    #FN <- n.sim - TP
+    
+    if (sum(n.sim, TP, PTP, FP, FN) > 0){
+      sqantisim.stats['Total', sc] <- n.sim
+      sqantisim.stats['TP', sc] <- TP
+      sqantisim.stats['PTP', sc] <- PTP
+      sqantisim.stats['FP', sc] <- FP
+      sqantisim.stats['FN', sc] <- FN
+      sqantisim.stats['Sensitivity', sc] <- TP/ (TP + FN)
+      sqantisim.stats['Precision', sc] <- TP/ (TP + FP)
+      sqantisim.stats['F-score', sc] <- 2*((sqantisim.stats['Sensitivity', sc]*sqantisim.stats['Precision', sc])/(sqantisim.stats['Sensitivity', sc]+sqantisim.stats['Precision', sc]))
+      sqantisim.stats['False_Discovery_Rate', sc] <- (FP) / (FP +  TP)
+      sqantisim.stats['Positive_Detection_Rate', sc] <- (TP + PTP) / (TP + FN)
+      sqantisim.stats['False_Detection_Rate', sc] <- (FP) / (FP + PTP + TP)
+    } else {
+      sqantisim.stats['Total', sc] <- 0
+      sqantisim.stats['TP', sc] <- 0
+      sqantisim.stats['PTP', sc] <- 0
+      sqantisim.stats['FP', sc] <- 0
+      sqantisim.stats['FN', sc] <- 0
+      sqantisim.stats['Sensitivity', sc] <- 0
+      sqantisim.stats['Precision', sc] <- 0
+      sqantisim.stats['F-score', sc] <- 0
+      sqantisim.stats['False_Discovery_Rate', sc] <- 0
+      sqantisim.stats['Positive_Detection_Rate', sc] <- 0
+      sqantisim.stats['False_Detection_Rate', sc] <- 0 
+    }
+  }
+  
+  known.TP <- 0
+  known.PTP <- 0
+  known.FN <- 0
+  known.FP <- 0
+  novel.TP <- 0
+  novel.PTP <- 0
+  novel.FN <- 0 
+  novel.FP <- 0
+  total.FP <- 0
+  for (sc in colnames(sqantisim.stats)){
+    if (sc == "FSM"){
+      known.TP <- known.TP + sqantisim.stats['TP', sc]
+      known.PTP <- known.PTP + sqantisim.stats['PTP', sc]
+      known.FN <- known.FN + sqantisim.stats['FN', sc]
+      known.FP <- known.FP + sqantisim.stats['FP', sc]
+    }else{
+      novel.TP <- novel.TP + sqantisim.stats['TP', sc]
+      novel.PTP <- novel.PTP + sqantisim.stats['PTP', sc]
+      novel.FN <- novel.FN + sqantisim.stats['FN', sc]
+      novel.FP <- novel.FP + sqantisim.stats['FP', sc]
+    }
+  }
+  
+  sqantisim.stats['Total', 'Known'] <-  nrow(data.known)
+  sqantisim.stats['TP', 'Known'] <- known.TP
+  sqantisim.stats['PTP', 'Known'] <- known.PTP
+  sqantisim.stats['FP', 'Known'] <- known.FP
+  sqantisim.stats['FN', 'Known'] <- known.FN
+  sqantisim.stats['Precision', 'Known'] <- known.TP / (known.TP + known.FP)
+  sqantisim.stats['Sensitivity', 'Known'] <- known.TP / (known.TP + known.FN)
+  sqantisim.stats['F-score', 'Known'] <- 2*((sqantisim.stats['Sensitivity', 'Known']*sqantisim.stats['Precision', 'Known'])/(sqantisim.stats['Sensitivity', 'Known']+sqantisim.stats['Precision', 'Known']))
+  sqantisim.stats['False_Discovery_Rate', 'Known'] <- (known.FP) / (known.FP +  known.TP)
+  sqantisim.stats['Positive_Detection_Rate', 'Known'] <- (known.TP + known.PTP) / (known.TP + known.FN)
+  sqantisim.stats['False_Detection_Rate', 'Known'] <- (known.FP) / (known.FP + known.PTP +  known.TP)
+  
+  sqantisim.stats['Total', 'Novel'] <-  nrow(data.novel)
+  sqantisim.stats['TP', 'Novel'] <- novel.TP
+  sqantisim.stats['PTP', 'Novel'] <- novel.PTP
+  sqantisim.stats['FP', 'Novel'] <- novel.FP
+  sqantisim.stats['FN', 'Novel'] <- novel.FN
+  sqantisim.stats['Precision', 'Novel'] <- novel.TP / (novel.TP + novel.FP)
+  sqantisim.stats['Sensitivity', 'Novel'] <- novel.TP / (novel.TP + novel.FN)
+  sqantisim.stats['F-score', 'Novel'] <- 2*((sqantisim.stats['Sensitivity', 'Novel']*sqantisim.stats['Precision', 'Novel'])/(sqantisim.stats['Sensitivity', 'Novel']+sqantisim.stats['Precision', 'Novel']))
+  sqantisim.stats['False_Discovery_Rate', 'Novel'] <- (novel.FP) / (novel.FP +  novel.TP)
+  sqantisim.stats['Positive_Detection_Rate', 'Novel'] <- (novel.TP + novel.PTP) / (novel.TP + novel.FN)
+  sqantisim.stats['False_Detection_Rate', 'Novel'] <- (novel.FP) / (novel.FP + novel.PTP +  novel.TP)
+  
+  col.order <- c("Known", "Novel", "FSM", "ISM", "NIC", "NNC", "Genic\nGenomic",  "Antisense", "Fusion","Intergenic", "Genic\nIntron")
+  row.order <- c('Total', 'TP', 'PTP', 'FP', 'FN', 'Sensitivity', 'Precision', 'F-score', 'False_Discovery_Rate', 'Positive_Detection_Rate', 'False_Detection_Rate')
+  sqantisim.stats <- sqantisim.stats[intersect(row.order, rownames(sqantisim.stats)), intersect(col.order, colnames(sqantisim.stats))]
   
   res <- list(data.summary, known.perfect.matches, novel.perfect.matches, sqantisim.stats)
   names(res) <- c("data.summary", "known.perfect.matches", "novel.perfect.matches", "sqantisim.stats")
@@ -248,7 +272,7 @@ args <- commandArgs(trailingOnly = TRUE)
 class.file <- args[1] # classification file SQANTI3
 junc.file <- args[2] # junctions file SQANTI3
 index.file <- args[3] # index file
-min.supp <- args[4] # min support reads
+min.supp <- as.numeric(args[4]) # min support reads
 src.path <- args[5] # path to src utilities
 quant.file <- args[6] # quantification file
 
@@ -308,14 +332,21 @@ data.index$sim_type[which(data.index$sim_counts == 0)] <- 'absent' # Ignore not 
 # Matched for novel and known
 MAX_TSS_TTS_DIFF = 50
 res.full <- isoform_level_metrics(data.query, data.index, MAX_TSS_TTS_DIFF)
+res.full[is.na(res.full)] <-  0
 res.min <- isoform_level_metrics(data.query, data.index, MAX_TSS_TTS_DIFF, min.supp)
 res.min$sqantisim.stats <- res.min$sqantisim.stats[c("Total", "TP", "FN", "Sensitivity"),]
+res.min[is.na(res.min)] <-  0
+
 
 res.gene <- gene_level_metrics(data.query, data.index, MAX_TSS_TTS_DIFF)
 
 
 modif.index <- modify_index_file(index.file, res.full, output_directory)
-write.table(modif.index, file = paste(output_directory, paste0(substr(index.file, 1,nchar(index.file)-4), ".eval.tsv"), sep = "/"), quote = F, sep = "\t", na = "NA",row.names = F)
+index_file_name <- basename(index.file)
+modif_index_path <- file.path(output_directory, paste0(substr(index_file_name, 1, nchar(index_file_name) - 4), ".eval.tsv"))
+print(paste("Modified index file written to:", modif_index_path))
+
+write.table(modif.index, file = modif_index_path, quote = F, sep = "\t", na = "NA", row.names = F)
 
 res.full$data.summary$match_type[which(res.full$data.summary$match_type == "PTP")] <- "FN"
 res.full$data.summary$match_type <- factor(res.full$data.summary$match_type, levels = c("TP", "FN"))
@@ -337,7 +368,7 @@ res.min$data.summary$match_type <- factor(res.min$data.summary$match_type, level
 # -------------------- 
 # -------------------- 
 # PLOT INDEX
-# p1: simulated expression profile
+# p1: Simulated and reconstructed isoform distribution
 # p2: structural classification
 # p3: TP vs FN - mono/multi-exon
 # p4: canonical juncs
@@ -358,7 +389,7 @@ print("***Generating plots for the report")
 #myPalette = c("#6BAED6","#FC8D59","#78C679","#EE6A50","#969696","#66C2A4", "goldenrod1", "darksalmon", "#41B6C4","tomato3", "#FE9929")
 myPalette = c("#3A5A81", "#D31336", "#252131", "#6BAED6","#FC8D59","#78C679","#EE6A50")
 
-cat.palette = c("FSM"="#6BAED6", "ISM"="#FC8D59", "NIC"="#78C679", 
+cat.palette = c("Known"="#6BAED6", "FSM"="#6BAED6", "ISM"="#FC8D59", "NIC"="#78C679", 
                 "NNC"="#EE6A50", "Genic\nGenomic"="#969696", "Antisense"="#66C2A4", "Fusion"="goldenrod1",
                 "Intergenic" = "darksalmon", "Genic\nIntron"="#41B6C4")
 
@@ -370,8 +401,7 @@ mytheme <- theme_classic(base_family = "Helvetica") +
         axis.title.y = element_text(size=13),
         axis.text.y  = element_text(vjust=0.5, size=12) ) +
   theme(legend.text = element_text(size = 11), legend.title = element_text(size=12), legend.key.size = unit(0.5, "cm")) +
-  theme(plot.title = element_text(lineheight=.4, size=15, hjust = 0.5)) +
-  theme(plot.margin = unit(c(2.5,1,1,1), "cm"))
+  theme(plot.title = element_text(lineheight=.4, size=15, hjust = 0.5))
 
 # -------------------- 
 # TABLE 1: SQANTI-SIM metrics
@@ -399,20 +429,23 @@ t2 <- DT::datatable(res.min$sqantisim.stats, class = 'compact', extensions = "Bu
 write.table(res.min$sqantisim.stats, file = paste(output_directory, 'SQANTI-SIM_metrics_min_supp.tsv', sep = "/"), quote = F, sep = "\t", na = "NA",row.names = F, col.names = gsub("\n", "_", colnames(res.min$sqantisim.stats)))
 
 # -------------------- PLOT FULL
-# PLOT 1: simulated expression profile
-expr.dist <- data.index[which(data.index$sim_type %in% c('novel', 'known')), c('sim_type', 'sim_counts')]
-
-p1 <- expr.dist %>%
-  ggplot(aes(x=sim_counts, fill=sim_type)) +
-  geom_histogram(aes(y=stat(count)/sum(count)), color="black", alpha=0.5, position = 'identity', bins = round(sqrt(nrow(expr.dist)))) +
+# PLOT 1: Simulated and reconstructed isoform distribution
+p1A <- data.index[data.index$sim_counts >= 1, ] %>%
+  mutate(structural_category = ifelse(sim_type == "known", "FSM", as.character(structural_category))) %>% 
+  ggplot(aes(x=structural_category)) +
+  geom_bar(aes(y = (..count..)/sum(..count..)*100, fill=structural_category), color="black", linewidth=0.3, width=0.7) +
+  scale_x_discrete(drop=FALSE) + 
+  xlab('') + 
+  ylab('Transcripts %') +
   mytheme +
-  scale_fill_manual(values = myPalette[1:2], name='Transcript type') +
-  xlab('Number of simulated reads') + 
-  ylab('Percentage of transcripts') +
-  ggtitle('Simulated expression levels')
+  geom_blank(aes(y=((..count..)/sum(..count..))), stat = "count") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, size=12)) +
+  scale_fill_manual(values = cat.palette, guide='none') +
+  ggtitle("Simulated isoforms" ) +
+  theme(axis.title.x=element_blank()) +
+  theme(legend.justification=c(1,1), legend.position=c(1,1))
 
-# PLOT 2: structural classification
-p2 <- data.class %>%
+p1B <- data.class %>%
   ggplot(aes(x=structural_category)) +
   geom_bar(aes(y = (..count..)/sum(..count..)*100, fill=structural_category), color="black", size=0.3, width=0.7) +
   scale_x_discrete(drop=FALSE) + 
@@ -420,25 +453,34 @@ p2 <- data.class %>%
   ylab('Transcripts %') +
   mytheme +
   geom_blank(aes(y=((..count..)/sum(..count..))), stat = "count") +
-  theme(axis.text.x = element_text(angle = 45)) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, size=12)) +
   scale_fill_manual(values = cat.palette, guide='none') +
-  ggtitle("Isoform Distribution Across Structural Categories\n\n" ) +
-  theme(axis.title.x=element_blank()) +  theme(axis.text.x  = element_text(margin=ggplot2::margin(17,0,0,0), size=12)) +
+  ggtitle("Reconstructed transcript models" ) +
+  theme(axis.title.x=element_blank()) +
   theme(legend.justification=c(1,1), legend.position=c(1,1))
 
+p1 <- annotate_figure(
+  ggarrange(p1A, p1B, ncol = 2, align = "h"),
+  top = text_grob("Isoform Distribution Across Structural Categories", size = 16)
+)
+
 # PLOT 3: TP vs FN - mono/multi-exon
-p3 <- res.full$data.summary %>%
+p2 <- res.full$data.summary %>%
   mutate(exon_type=ifelse(exons > 1, 'multi-exon', 'mono-exon')) %>%
+  mutate(exon_type = factor(exon_type, levels = c('multi-exon', 'mono-exon')),
+         match_type = factor(match_type, levels = c("FN", "TP"))) %>% 
   group_by(structural_category, match_type, exon_type) %>%
   summarise(value=n()) %>%
   ggplot(aes(x=structural_category)) +
-  geom_bar(aes(fill=match_type, y=value, alpha=exon_type), position="fill", stat="identity") +
-  scale_fill_manual(values=myPalette, name='Stats') +
-  scale_alpha_manual(values=c(0.5,1), name='Exons') +
+  geom_bar(aes(fill=structural_category, y=value, alpha=match_type), position="stack", stat="identity") +
+  facet_wrap(. ~ exon_type, scale = "free") +
+  scale_fill_manual(values=cat.palette, guide='none') +
+  scale_alpha_manual(values=c("TP" = 1, "FN" = 0.5), name='Pipeline performance') +
   mytheme +
-  ylab('Percentage %') +
+  ylab('No. of transcripts') +
   xlab('')+
-  ggtitle('Single- and Multi-exon identifications')
+  ggtitle('Single- and Multi-exon identifications') +
+  theme(legend.position = "bottom")
 
 p3.min <- res.min$data.summary %>%
   mutate(exon_type=ifelse(exons > 1, 'multi-exon', 'mono-exon')) %>%

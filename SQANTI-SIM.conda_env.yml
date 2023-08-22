@@ -6,7 +6,7 @@ channels:
   - r
   - defaults
 dependencies:
-  - bcbiogff
+  - bcbio-gff
   - bedtools
   - biopython
   - bioconductor-noiseq
@@ -26,6 +26,7 @@ dependencies:
   - openblas
   - openssl
   - pandoc
+  - pbccs
   - perl
   - pip
   - psutil
@@ -40,6 +41,7 @@ dependencies:
   - r-fmsb
   - r-ggplot2
   - r-ggplotify
+  - r-ggpubr
   - r-gridbase
   - r-gridextra
   - r-htmltools
@@ -51,7 +53,7 @@ dependencies:
   - r-plotly
   - r-plyr
   - samtools
-  - scikit-learn=0.21.3=py37hd81dba3_0
+  - scikit-learn
   - scipy
   - six
   - star

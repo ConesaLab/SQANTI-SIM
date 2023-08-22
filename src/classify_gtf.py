@@ -4,10 +4,10 @@ classify_gtf.py
 
 Given a GTF file as input, determine its potential SQANTI3 structural
 category not taking into account itself in the reference.
-The classification step is adapted from the original SQANTI3 QC v5.0.
+The classification step is adapted from the original SQANTI3 QC
 (sqanti3_qc.py -> https://github.com/ConesaLab/SQANTI3)
 
-Author: Jorge Mestre Tomas (jormart2@alumni.uv.es)
+Author: Jorge Mestre Tomas (jorge.mestre.tomas@csic.es)
 """
 
 import os
@@ -914,7 +914,8 @@ def transcriptsKnownSpliceSites(trec: genePredRecord, ref_chr: list, start_ends_
                         continue
 
                     diff_tss, diff_tts = get_diff_tss_tts(trec, ref)
-
+                    
+                    flag = False
                     for e in ref.exons:
                         if e.start <= trec.txStart < trec.txEnd <= e.end:
                             isoform_hit.str_class = "incomplete-splice_match"
@@ -929,8 +930,11 @@ def transcriptsKnownSpliceSites(trec: genePredRecord, ref_chr: list, start_ends_
                             )
                             # this is as good a match as it gets, we can stop the search here
                             get_gene_diff_tss_tts(isoform_hit)
+                            flag = True
                             return isoform_hit
-
+                    
+                    if flag:
+                        continue
                     # if we haven't exited here, then ISM hit is not found yet
                     # instead check if it's NIC by intron retention
                     # but we don't exit here since the next gene could be a ISM hit
@@ -1122,12 +1126,7 @@ def associationOverlapping(
                 da_pairs = junctions_by_chr[trec.chrom]["da_pairs"]
                 i = bisect.bisect_left(da_pairs, (trec.txStart, trec.txEnd))
                 while i < len(da_pairs) and da_pairs[i][0] <= trec.txStart:
-                    if (
-                        da_pairs[i][0]
-                        <= trec.txStart
-                        <= trec.txStart
-                        <= da_pairs[i][1]
-                    ):
+                    if da_pairs[i][0] <= trec.txStart <= trec.txEnd <= da_pairs[i][1]:
                         isoforms_hit.str_class = "genic_intron"
                         for ref in trans_by_region:
                             if (

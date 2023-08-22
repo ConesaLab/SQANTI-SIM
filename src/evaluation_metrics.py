@@ -4,7 +4,7 @@ evaluation_metrics.py
 
 Generate SQANTI-SIM report and metrics
 
-Author: Jorge Mestre Tomas (jormart2@alumni.uv.es)
+Author: Jorge Mestre Tomas (jorge.mestre.tomas@csic.es)
 """
 
 import os
@@ -95,6 +95,10 @@ def sqanti3_stats(args):
     if args.short_reads:
         cmd.append("--short_reads")
         cmd.append(args.short_reads)
+    
+    if args.coverage:
+        cmd.append("--coverage")
+        cmd.append(args.coverage)
 
     if args.fasta:
         cmd.append("--aligner_choice")

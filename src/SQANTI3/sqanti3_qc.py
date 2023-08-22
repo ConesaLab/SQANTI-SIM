@@ -15,6 +15,7 @@ import itertools
 import bisect
 import argparse
 import math
+import csv
 import numpy as np
 from scipy import mean
 from collections import defaultdict, Counter, namedtuple
@@ -447,6 +448,12 @@ def get_corr_filenames(args, dir=None):
     corrORF =  corrPathPrefix +"_corrected.faa"
     return corrGTF, corrSAM, corrFASTA, corrORF
 
+def get_isoform_hits_name(args, dir=None):
+    d = dir if dir is not None else args.dir
+    corrPathPrefix = os.path.join(d, args.output)
+    isoform_hits_name = corrPathPrefix +"_isoform_hits.txt"
+    return isoform_hits_name
+
 def get_class_junc_filenames(args, dir=None):
     d = dir if dir is not None else args.dir
     outputPathPrefix = os.path.join(d, args.output)
@@ -830,7 +837,7 @@ def expression_parser(expressionFile):
         return exp_dict
 
 
-def transcriptsKnownSpliceSites(refs_1exon_by_chr, refs_exons_by_chr, start_ends_by_gene, trec, genome_dict, nPolyA):
+def transcriptsKnownSpliceSites(isoform_hits_name, refs_1exon_by_chr, refs_exons_by_chr, start_ends_by_gene, trec, genome_dict, nPolyA):
     """
     :param refs_1exon_by_chr: dict of single exon references (chr -> IntervalTree)
     :param refs_exons_by_chr: dict of multi exon references (chr -> IntervalTree)
@@ -1030,6 +1037,12 @@ def transcriptsKnownSpliceSites(refs_1exon_by_chr, refs_exons_by_chr, start_ends
                     # #############################
                     if match_type == "exact":
                         subtype = "multi-exon"
+                        if isoform_hits_name:
+                            with open(isoform_hits_name+'_tmp', 'a') as out_file:
+                                tsv_writer = csv.writer(out_file, delimiter='\t')
+                                tsv_writer.writerow([trec.id, trec.length, trec.exonCount, ref.id, ref.length, ref.exonCount,
+                                                      'FSM', diff_tss, diff_tts])
+                        #record hit to isoform hits file
                         # assign as a new hit if
                         # (1) no prev hits yet
                         # (2) this one is better (prev not FSM or is FSM but worse tss/tts)
@@ -1068,6 +1081,11 @@ def transcriptsKnownSpliceSites(refs_1exon_by_chr, refs_exons_by_chr, start_ends
                     # #######################################################
                     elif match_type == "subset":
                         subtype = categorize_incomplete_matches(trec, ref)
+                        if isoform_hits_name:
+                            with open(isoform_hits_name+'_tmp', 'a') as out_file:
+                                tsv_writer = csv.writer(out_file, delimiter='\t')
+                                tsv_writer.writerow([trec.id, trec.length, trec.exonCount, ref.id, ref.length, 
+                                                     ref.exonCount, 'ISM', diff_tss, diff_tts])
                         # assign as a new (ISM) hit if
                         # (1) no prev hit
                         # (2) prev hit not as good (is ISM with worse tss/tts or anyKnownSpliceSite)
@@ -1217,7 +1235,7 @@ def transcriptsKnownSpliceSites(refs_1exon_by_chr, refs_exons_by_chr, start_ends
                     isoform_hit.AS_genes.add(ref.gene)
                     continue
                 diff_tss, diff_tts = get_diff_tss_tts(trec, ref)
-
+                flag = False
                 for e in ref.exons:
                     if e.start <= trec.txStart < trec.txEnd <= e.end:
                         isoform_hit.str_class = "incomplete-splice_match"
@@ -1225,8 +1243,10 @@ def transcriptsKnownSpliceSites(refs_1exon_by_chr, refs_exons_by_chr, start_ends
                         isoform_hit.modify(ref.id, ref.gene, diff_tss, diff_tts, ref.length, ref.exonCount)
                         # this is as good a match as it gets, we can stop the search here
                         get_gene_diff_tss_tts(isoform_hit)
+                        flag = True
                         return isoform_hit
-
+                if flag:
+                    continue
                 # if we haven't exited here, then ISM hit is not found yet
                 # instead check if it's NIC by intron retention
                 # but we don't exit here since the next gene could be a ISM hit
@@ -1336,7 +1356,7 @@ def associationOverlapping(isoforms_hit, trec, junctions_by_chr):
                 da_pairs = junctions_by_chr[trec.chrom]['da_pairs']
                 i = bisect.bisect_left(da_pairs, (trec.txStart, trec.txEnd))
                 while i < len(da_pairs) and da_pairs[i][0] <= trec.txStart:
-                    if da_pairs[i][0] <= trec.txStart <= trec.txStart <= da_pairs[i][1]:
+                    if da_pairs[i][0] <= trec.txStart <= trec.txEnd <= da_pairs[i][1]:
                         isoforms_hit.str_class = "genic_intron"
                         break
                     i += 1
@@ -1478,10 +1498,19 @@ def get_fusion_component(fusion_gtf):
 
 
 def isoformClassification(args, isoforms_by_chr, refs_1exon_by_chr, refs_exons_by_chr, junctions_by_chr, junctions_by_gene, start_ends_by_gene, genome_dict, indelsJunc, orfDict, corrGTF):
+    global isoform_hits_name
     if args.is_fusion: # read GFF to get fusion components
         # ex: PBfusion.1.1 --> (1-based start, 1-based end) of where the fusion component is w.r.t to entire fusion
         fusion_components = get_fusion_component(args.isoforms)
 
+    if args.isoform_hits:
+        isoform_hits_name = get_isoform_hits_name(args, dir=None)
+        with open(isoform_hits_name+'_tmp', 'w') as out_file:
+            tsv_writer = csv.writer(out_file, delimiter='\t')
+            tsv_writer.writerow(['Isoform', 'Isoform_length', 'Isoform_exon_number', 'Hit', 'Hit_length', 
+                                 'Hit_exon_number', 'Match', 'Diff_to_TSS', 'Diff_to_TTS', 'Matching_type'])
+    else:
+        isoform_hits_name = None
     ## read coverage files if provided
     star_out=None
     if args.coverage is not None:
@@ -1589,7 +1618,7 @@ def isoformClassification(args, isoforms_by_chr, refs_1exon_by_chr, refs_exons_b
     for chrom,records in isoforms_by_chr.items():
         for rec in records:
             # Find best reference hit
-            isoform_hit = transcriptsKnownSpliceSites(refs_1exon_by_chr, refs_exons_by_chr, start_ends_by_gene, rec, genome_dict, nPolyA=args.window)
+            isoform_hit = transcriptsKnownSpliceSites(isoform_hits_name, refs_1exon_by_chr, refs_exons_by_chr, start_ends_by_gene, rec, genome_dict, nPolyA=args.window)
 
             if isoform_hit.str_class in ("anyKnownJunction", "anyKnownSpliceSite"):
                 # not FSM or ISM --> see if it is NIC, NNC, or fusion
@@ -1824,7 +1853,8 @@ def FLcount_parser(fl_count_filename):
 def run(args):
     global outputClassPath
     global outputJuncPath
-    global corrFASTA
+    global corrFASTA 
+    global isoform_hits_name
 
     corrGTF, corrSAM, corrFASTA, corrORF = get_corr_filenames(args)
     outputClassPath, outputJuncPath = get_class_junc_filenames(args)
@@ -2050,6 +2080,22 @@ def run(args):
                     r['RTS_junction'] = 'FALSE'
             fout_junc.writerow(r)
 
+    #isoform hits to file if requested
+    if args.isoform_hits:
+        fields_hits =['Isoform', 'Isoform_length', 'Isoform_exon_number', 'Hit', 'Hit_length', 
+                      'Hit_exon_number', 'Match', 'Diff_to_TSS', 'Diff_to_TTS', 'Matching_type']
+        with open(isoform_hits_name,'w') as h:
+            fout_hits = DictWriter(h, fieldnames=fields_hits, delimiter='\t')    
+            fout_hits.writeheader()
+            data = DictReader(open(isoform_hits_name+"_tmp"), delimiter='\t')
+            data = sorted(data, key=lambda row:(row['Isoform']))
+            for r in data:
+                if r['Hit'] in isoforms_info[r['Isoform']].transcripts:
+                    r['Matching_type'] = 'primary'
+                else:
+                    r['Matching_type'] = 'secondary'
+                fout_hits.writerow(r)
+        os.remove(isoform_hits_name+'_tmp')
     ## Generating report
     if args.report != 'skip':
         print("**** Generating SQANTI3 report....", file=sys.stderr)
@@ -2071,11 +2117,11 @@ ISOANNOT_PROG =  os.path.join(utilitiesPath, "IsoAnnotLite_SQ3.py")
 
 def run_isoAnnotLite(correctedGTF, outClassFile, outJuncFile, outName, gff3_opt):
     if gff3_opt:
-        iso_out = os.path.join(os.path.dirname(correctedGTF),outName)
+        iso_out = os.path.join(os.path.dirname(correctedGTF), outName)
         isoAnnot_sum = iso_out + ".isoAnnotLite_stats.txt"
         ISOANNOT_CMD = "python3 "+ ISOANNOT_PROG + " {g} {c} {j} -gff3 {t} -o {o} -novel -stdout {i}".format(g=correctedGTF , c=outClassFile, j=outJuncFile, t=gff3_opt, o=iso_out, i=isoAnnot_sum)
     else:
-        iso_out = os.path.dirname(correctedGTF) + outName
+        iso_out = os.path.join(os.path.dirname(correctedGTF), outName)
         ISOANNOT_CMD = "python3 "+ ISOANNOT_PROG + " {g} {c} {j} -o {o} -novel".format(g=correctedGTF , c=outClassFile, j=outJuncFile, o=iso_out)
     if subprocess.check_call(ISOANNOT_CMD, shell=True)!=0:
         print("ERROR running command: {0}".format(ISOANNOT_CMD), file=sys.stderr)
@@ -2142,7 +2188,7 @@ class CAGEPeak:
         dist to TSS is 0 if right on spot
         dist to TSS is + if downstream, - if upstream (watch for strand!!!)
         """
-        within_peak, dist_peak = False, 'NA'
+        within_peak, dist_peak = 'FALSE', 'NA'
         for (tss0,start0,end1) in self.cage_peaks[(chrom,strand)].find(query-search_window, query+search_window):
  # Skip those cage peaks that are downstream the detected TSS because degradation just make the transcript shorter
             if strand=='+' and start0>int(query) and end1>int(query):
@@ -2150,12 +2196,18 @@ class CAGEPeak:
             if strand=='-' and start0<int(query) and end1<int(query):
                 continue
 ##
-            if not within_peak:
-                within_peak, dist_peak = (start0<=query<end1), (query - tss0) * (-1 if strand=='-' else +1)
+            within_out = (start0<=query<end1)
+            if within_out:
+                w = 'TRUE'
+            else:
+                w = 'FALSE'
+
+            if not within_peak=='TRUE':
+                within_peak, dist_peak = w, (query - tss0) * (-1 if strand=='-' else +1)
             else:
                 d = (query - tss0) * (-1 if strand=='-' else +1)
                 if abs(d) < abs(dist_peak):
-                    within_peak, dist_peak = (start0<=query<end1), d
+                    within_peak, dist_peak = w, d
         return within_peak, dist_peak
 
 class PolyAPeak:
@@ -2183,7 +2235,7 @@ class PolyAPeak:
         assert strand in ('+', '-')
         hits = self.polya_peaks[(chrom,strand)].find(query-search_window, query+search_window)
         if len(hits) == 0:
-            return False, None
+            return "FALSE", None
         else:
             s0, e1 = hits[0]
             min_dist = query - s0
@@ -2193,7 +2245,7 @@ class PolyAPeak:
                     min_dist = d
             if strand == '-':
                 min_dist = -min_dist
-            return True, min_dist
+            return "TRUE", min_dist
 
 
 def split_input_run(args):
@@ -2339,6 +2391,7 @@ def main():
     parser.add_argument('--gff3' , help='\t\tPrecomputed tappAS species specific GFF3 file. It will serve as reference to transfer functional attributes',required=False)
     parser.add_argument('--short_reads', help='\t\tFile Of File Names (fofn, space separated) with paths to FASTA or FASTQ from Short-Read RNA-Seq. If expression or coverage files are not provided, Kallisto (just for pair-end data) and STAR, respectively, will be run to calculate them.', required=False)
     parser.add_argument('--SR_bam' , help='\t\t Directory or fofn file with the sorted bam files of Short Reads RNA-Seq mapped against the genome', required=False)
+    parser.add_argument('--isoform_hits' , help='\t\t Report all FSM/ISM isoform hits in a separate file', required=False, default = False, action='store_true')
 
 
 
@@ -2430,17 +2483,36 @@ def main():
     print("Write arguments to {0}...".format(args.doc, file=sys.stdout))
     with open(args.doc, 'w') as f:
         f.write("Version\t" + __version__ + "\n")
-        f.write("Input\t" + os.path.basename(args.isoforms) + "\n")
-        f.write("Annotation\t" + os.path.basename(args.annotation) + "\n")
-        f.write("Genome\t" + os.path.basename(args.genome) + "\n")
-        f.write("Aligner\t" + args.aligner_choice + "\n")
-        f.write("FLCount\t" + (os.path.basename(args.fl_count) if args.fl_count is not None else "NA") + "\n")
-        f.write("Expression\t" + (os.path.basename(args.expression) if args.expression is not None else "NA") + "\n")
-        f.write("Junction\t" + (os.path.basename(args.coverage) if args.coverage is not None else "NA") + "\n")
-        f.write("CagePeak\t" + (os.path.basename(args.CAGE_peak)  if args.CAGE_peak is not None else "NA") + "\n")
-        f.write("PolyA\t" + (os.path.basename(args.polyA_motif_list) if args.polyA_motif_list is not None else "NA") + "\n")
-        f.write("PolyAPeak\t" + (os.path.basename(args.polyA_peak)  if args.polyA_peak is not None else "NA") + "\n")
+        f.write("Input\t" + os.path.abspath(args.isoforms) + "\n")
+        f.write("Annotation\t" + os.path.abspath(args.annotation) + "\n")
+        f.write("Genome\t" + os.path.abspath(args.genome) + "\n")
+        f.write("MinRefLength\t"+ str(args.min_ref_len) + "\n")
+        f.write("ForceIdIgnore\t"+str(args.force_id_ignore) + "\n")
+        f.write("Aligner\t" + str(args.aligner_choice) + "\n")
+        f.write("FLCount\t" + (os.path.abspath(args.fl_count) if args.fl_count is not None else "NA") + "\n")
+        f.write("Expression\t" + (os.path.abspath(args.expression) if args.expression is not None else "NA") + "\n")
+        f.write("Junction\t" + (os.path.abspath(args.coverage) if args.coverage is not None else "NA") + "\n")
+        f.write("CAGEPeak\t" + (os.path.abspath(args.CAGE_peak)  if args.CAGE_peak is not None else "NA") + "\n")
+        f.write("PolyAMotif\t" + (os.path.abspath(args.polyA_motif_list) if args.polyA_motif_list is not None else "NA") + "\n")
+        f.write("PolyAPeak\t" + (os.path.abspath(args.polyA_peak)  if args.polyA_peak is not None else "NA") + "\n")
         f.write("IsFusion\t" + str(args.is_fusion) + "\n")
+        f.write("PhyloP\t" + (os.path.abspath(args.phyloP_bed)  if args.phyloP_bed is not None else "NA") + "\n")
+        f.write("SkipORF\t" + str(args.skipORF) + "\n")
+        f.write("ORFInput\t" + (os.path.abspath(args.orf_input) if args.orf_input is not None else "NA" ) + "\n" )
+        f.write("FASTAused\t" + str(args.fasta) +"\n")
+        f.write("Expression\t" + (os.path.abspath(args.expression) if args.expression is not None else "NA" ) + "\n")
+        f.write("GMAPindex\t" + (os.path.abspath(args.gmap_index) if args.gmap_index is not None else "NA" ) + "\n")
+        f.write("OutputPrefix\t" + str(args.output) + "\n")
+        f.write("OutputDirectory\t" + os.path.abspath(args.dir) + "\n")
+        f.write("Coverage\t" + (os.path.abspath(args.coverage) if args.coverage is not None else "NA") + "\n" )
+        f.write("CanonicalSites\t" + str(args.sites) + "\n")
+        f.write("PostTTSWindow\t" + str(args.window) + "\n")
+        f.write("GeneName\t" + str(args.genename) + "\n")
+        f.write("ReportType\t" + str(args.report) + "\n")
+        f.write("RunIsoAnnotLite\t" + str(args.isoAnnotLite) + "\n")
+        f.write("isoAnnotGFF3\t" + (os.path.abspath(args.gff3) if args.gff3 is not None else "NA") + "\n")
+        f.write("ShortReads\t" + (os.path.abspath(args.short_reads) if args.short_reads is not None else "NA") + "\n")
+        f.write("ShortReadsBAMs\t" + (os.path.abspath(args.SR_bam) if args.SR_bam is not None else "NA") + "\n")
     
     # Running functionality
     print("**** Running SQANTI3...", file=sys.stdout)

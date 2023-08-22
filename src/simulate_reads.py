@@ -2,10 +2,10 @@
 """
 simulate_reads.py
 
-Simulate reads from different sequencing platforms: PacBio (IsoSeqSim), ONT
-(NanoSim) and Illumina (Polyester)
+Simulate data: PacBio (PBSIM3, IsoSeqSim), ONT (NanoSim),
+Illumina (Polyester) and CAGE-seq
 
-Author: Jorge Mestre Tomas (jormart2@alumni.uv.es)
+Author: Jorge Mestre Tomas (jorge.mestre.tomas@csic.es)
 """
 
 import numpy
@@ -18,8 +18,231 @@ import subprocess
 import sys
 from collections import defaultdict
 
+from Bio import SeqIO
+from subprocess import call
 
-def pb_simulation(args):
+
+def pbsim_simulation(args):
+    """Simulate PacBio reads using the PBSIM3
+    Written by Tianyuan Liu
+    """
+    def counts_to_index(row):
+        return id_counts[row["transcript_id"]]
+
+    def maf_to_fasta_and_mapping(maf_file, fasta_file, mapping_file):
+        """Convert MAF file to FASTA and mapping file."""
+        with open(maf_file, 'r') as maf, open(fasta_file, 'w') as fasta, open(mapping_file, 'w') as mapping:
+            id, number, sequence = None, None, None
+            for line in maf:
+                if line.startswith('s'):
+                    parts = line.split()
+                    if id is None:
+                        id = parts[1]
+                    else:
+                        number = parts[1].split('_')[1]
+                        sequence = parts[6].replace('-', '')
+                        fasta.write(f'>{id}_PBSIM_simulated_read_{number}\n{sequence}\n')
+                        mapping.write(f'{id}_PBSIM_simulated_read_{number}\n{id}\n')
+                        id, number, sequence = None, None, None
+
+    def create_transcript_file(index_file, fasta_file, output_file, long_count = None):
+        # Load the index file into a pandas DataFrame
+        index_df = pandas.read_csv(index_file, sep='\t')
+
+        # Load the fasta file using Biopython's SeqIO
+        fasta_dict = SeqIO.to_dict(SeqIO.parse(fasta_file, 'fasta'))
+
+        # Initialize an empty list to store the transcript data
+        transcripts = []
+
+        # Iterate over the rows in the index DataFrame
+        for _, row in index_df.iterrows():
+            # Extract the necessary information
+            transcript_id = row['transcript_id']
+            if not long_count:
+                sense_count = row['requested_counts']  # Assuming this is the sense count
+            else:
+                sense_count = int(round((row['requested_tpm']*long_count)/1000000))
+ 
+            antisense_count = 0
+
+            # Fetch the sequence from the fasta file
+            sequence = str(fasta_dict[transcript_id].seq)
+
+            # Check if the sequence is empty
+            if not sequence:
+                print(
+                    f"No sequence found for transcript {transcript_id}")
+            # Append a tuple with the transcript data to the list
+            transcripts.append((transcript_id, sense_count, antisense_count, sequence))
+
+        # Convert the list of transcripts to a DataFrame
+        transcript_df = pandas.DataFrame(transcripts,
+                                         columns=['transcript_id', 'sense_count', 'antisense_count', 'sequence'])
+
+        # Write the DataFrame to a tab-delimited file
+        transcript_df.to_csv(output_file, sep='\t', index=False)
+
+    # convert gtf to gdp
+
+    src_dir = os.path.dirname(os.path.realpath(__file__))
+    pbsim = os.path.join(src_dir, "pbsim3")
+    if os.path.isdir(args.dir):
+        print("WARNING: output directory already exists. Overwriting!", file=sys.stderr)
+    else:
+        os.makedirs(args.dir)
+    # temporary directory
+    tmp_dir = os.path.join(args.dir, "temp_pbsim")
+    if os.path.isdir(tmp_dir):
+        print("WARNING: temporary directory already exists. Overwriting!", file=sys.stderr)
+    else:
+        os.makedirs(tmp_dir)
+
+    udir = src_dir + "/IsoSeqSim/" + "utilities/"
+    cmd_gtf2gdp = udir + "/py_isoseqsim_gtf2gpd.py -i " + args.gtf + " -o " + tmp_dir + "/normal_annotation.gpd"
+    call(cmd_gtf2gdp.split())
+    sys.stdout.flush()
+
+    cmd_gpd2fa = udir + "/py_isoseqsim_gpd2fa_normal.py -a " + args.genome + " -g " + tmp_dir + "/normal_annotation.gpd" + " -o " + tmp_dir + "/normal_transcriptome.fa"
+    call(cmd_gpd2fa.split())
+
+    # Create transcript file for PBSIM3
+    if not args.long_count:
+        create_transcript_file(index_file = args.trans_index, fasta_file= tmp_dir + "/normal_transcriptome.fa", output_file=os.path.join(tmp_dir, "sample.transcript"))
+    else:
+        create_transcript_file(index_file = args.trans_index, fasta_file= tmp_dir + "/normal_transcriptome.fa", output_file=os.path.join(tmp_dir, "sample.transcript"), long_count=args.long_count)
+
+    # PBSIM3 simulation
+    print("[SQANTI-SIM] Simulating PacBio reads with PBSIM3")
+
+    if args.pass_num == 1:
+        cmd = [
+            "pbsim",
+            "--strategy", "trans",
+            "--method", "qshmm",
+            "--qshmm", pbsim + "/data/QSHMM-RSII.model",
+            "--transcript", tmp_dir + "/sample.transcript",
+            "--accuracy-mean", "0.95",
+            "--seed", str(args.seed)
+        ]
+
+        cmd = " ".join(cmd)
+        sys.stdout.flush()
+        if subprocess.check_call(cmd, shell=True) != 0:
+            print("ERROR running PBSIM3: {0}".format(cmd), file=sys.stderr)
+            sys.exit(1)
+
+        # Move output files to tmp directory
+        os.rename("sd.fastq", os.path.join(tmp_dir, "sd.fastq"))
+        os.rename("sd.maf", os.path.join(tmp_dir, "sd.maf"))
+        maf_file = os.path.join(tmp_dir, "sd.maf")
+        pbsm_fasta = os.path.join(args.dir, "PBSIM_simulated.fasta")
+        read_to_iso = os.path.join(args.dir, "PBSIM_simulated.read_to_isoform.tsv")
+
+        # Remove unaligned reads from the MAF file
+        print("[SQANTI-SIM] Creating read_to_isoform file")
+        # Define a function to convert the MAF file to a FASTA file
+        maf_to_fasta_and_mapping(maf_file, pbsm_fasta, read_to_iso)
+
+    elif args.pass_num > 1:
+        cmd = [
+            "pbsim",
+            "--strategy", "trans",
+            "--method", "qshmm",
+            "--qshmm", pbsim + "/data/QSHMM-RSII.model",
+            "--transcript", tmp_dir + "/sample.transcript",
+            "--accuracy-mean", "0.95",
+            "--pass-num", str(args.pass_num),
+            "--seed", str(args.seed)
+        ]
+
+        cmd = " ".join(cmd)
+        sys.stdout.flush()
+        if subprocess.check_call(cmd, shell=True) != 0:
+            print("ERROR running PBSIM3: {0}".format(cmd), file=sys.stderr)
+            sys.exit(1)
+
+        # Move output files to tmp directory
+        os.rename("sd.sam", os.path.join(tmp_dir, "sd.sam"))
+        os.rename("sd.maf", os.path.join(tmp_dir, "sd.maf"))
+        # convert sam file to bam file
+        cmd = "samtools view -bS " + tmp_dir + "/sd.sam > " + tmp_dir + "/sd.bam"
+        if subprocess.check_call(cmd, shell=True) != 0:
+            print("ERROR running samtools: {0}".format(cmd), file=sys.stderr)
+            sys.exit(1)
+
+        # use the ccs program to generate consensus reads (HiFi reads)
+        cmd = "ccs " + tmp_dir + "/sd.bam " + tmp_dir + "/sd.ccs.bam"
+        if subprocess.check_call(cmd, shell=True) != 0:
+            print("ERROR running ccs: {0}".format(cmd), file=sys.stderr)
+            sys.exit(1)
+
+        # use samtools convert bam to fasta
+        cmd = "samtools fasta " + tmp_dir + "/sd.ccs.bam > " + tmp_dir + "/sd.ccs.fasta"
+        if subprocess.check_call(cmd, shell=True) != 0:
+            print("ERROR running samtools: {0}".format(cmd), file=sys.stderr)
+            sys.exit(1)
+
+        def rename_fasta_headers(transcript_table_path, fasta_path, output_path):
+            # Parse the transcript table
+            transcript_table = {}
+            total_sense_count = 0
+            with open(transcript_table_path, 'r') as f:
+                next(f)  # Skip header line
+                for line in f:
+                    transcript_id, sense_count, antisense_count, _ = line.split('\t')
+                    sense_count = int(sense_count)
+                    transcript_table[total_sense_count + 1] = (transcript_id, sense_count)
+                    total_sense_count += sense_count
+
+            # Rename the headers in the FASTA file
+            with open(fasta_path, 'r') as in_f, open(output_path, 'w') as out_f:
+                for line in in_f:
+                    if line.startswith('>'):
+                        read_num = int(line.split('/')[1])
+                        for start, (transcript_id, sense_count) in transcript_table.items():
+                            if start <= read_num < start + sense_count:
+                                read_id = read_num - start + 1
+                                out_f.write(f'>{transcript_id}_PBSIM_simulated_read_{read_id}\n')
+                                break
+                    else:
+                        out_f.write(line)
+
+        pbsm_fasta = os.path.join(args.dir, "PBSIM3_simulated.fasta")
+        read_to_iso = os.path.join(args.dir, "PBSIM3_simulated.read_to_isoform.tsv")
+        rename_fasta_headers(tmp_dir + "/sample.transcript", tmp_dir + "/sd.ccs.fasta", pbsm_fasta)
+
+
+    else:
+        print("ERROR: pass_num must be >= 1", file=sys.stderr)
+        sys.exit(1)
+
+    print("[SQANTI-SIM] Counting PBSIM3 reads")
+
+    output_read_info = open(read_to_iso, "w")
+    id_counts = defaultdict(lambda: 0)
+    with open (pbsm_fasta, "r") as sim_fasta:
+        for line in sim_fasta:
+            if line.startswith(">"):
+                line = line.lstrip(">").rstrip()
+                line_split = line.split("_")
+                trans_id = "_".join(line_split[:-4])
+                output_read_info.write(line + "\t" + trans_id + "\n")
+                id_counts[trans_id] += 1
+
+    sim_fasta.close()
+    output_read_info.close()
+
+    trans_index = pandas.read_csv(args.trans_index, sep="\t", header=0, dtype={"chrom":str})
+    trans_index["sim_counts"] = trans_index.apply(counts_to_index, axis=1)
+    trans_index["sim_counts"] = trans_index["sim_counts"].fillna(0)
+    trans_index.to_csv(
+        args.trans_index, sep="\t", header=True, index=False, na_rep="NA"
+    )
+    print("[SQANTI-SIM] PBSIM3 simulation done")
+    return
+
+def isoseqsim_simulation(args):
     """Simulate PacBio reads using the IsoSeqSim pipeline"""
 
     def counts_to_index(row):
@@ -73,9 +296,9 @@ def pb_simulation(args):
         "--c3",
         os.path.join(util_dir, "3_end_completeness.PacBio-Sequel.tab"),
         "-o",
-        os.path.join(args.dir, "PacBio_simulated"),
+        os.path.join(args.dir, "IsoSeqSim_simulated"),
         "-t",
-        os.path.join(args.dir, "PacBio_simulated.tsv"),
+        os.path.join(args.dir, "IsoSeqSim_simulated.tsv"),
         "--es",
         "0.01731",
         "--ed",
@@ -102,10 +325,10 @@ def pb_simulation(args):
     os.remove(expr_f)
 
     print("[SQANTI-SIM] Counting PacBio reads")
-    read_to_iso = os.path.join(args.dir, "PacBio_simulated.read_to_isoform.tsv")
+    read_to_iso = os.path.join(args.dir, "IsoSeqSim_simulated.read_to_isoform.tsv")
     output_read_info = open(read_to_iso, "w")
     id_counts = defaultdict(lambda: 0)
-    isoseqsim_fasta = os.path.join(args.dir, "PacBio_simulated.fasta")
+    isoseqsim_fasta = os.path.join(args.dir, "IsoSeqSim_simulated.fasta")
     with open(isoseqsim_fasta, "r") as sim_fasta:
         for line in sim_fasta:
             if line.startswith(">"):
@@ -161,34 +384,51 @@ def ont_simulation(args):
     else:
         os.makedirs(args.dir)
 
-    if args.read_type == "dRNA":
-        model_name = "human_NA12878_dRNA_Bham1_guppy"
-        r_type = "dRNA"
-        uracil = True
-    elif args.read_type == "cDNA":
-        model_name = "human_NA12878_cDNA_Bham1_guppy"
-        r_type = "cDNA_1D2"
-        uracil = False
-    else:
-        print(
-            "[SQANTI-SIM] ERROR not valid read_type value %s" % (args.read_type), file=sys.stderr)
-        return
-
     src_dir = os.path.dirname(os.path.realpath(__file__))
     nanosim = os.path.join(src_dir, "NanoSim/src/simulator.py")
-    models = os.path.join(src_dir, "NanoSim/pre-trained_models/")
-    model_dir = models + model_name + "/"
 
+    if not args.nanosim_model:
+        models = os.path.join(src_dir, "../pre-trained_models/")
+        if args.read_type == "dRNA":
+            model_name = "human_WTC11_dRNA_guppy_NanoSim"
+        elif args.read_type == "cDNA":
+            model_name = "human_WTC11_cDNA_guppy_NanoSim"
+        prefix = "training"
+        model_dir = models + model_name + "/"
+        model_complete = models + model_name + "/" + prefix
+    else:
+        model_complete = args.nanosim_model
+        model_dir = os.path.dirname(model_complete)
+        prefix = os.path.basename(model_complete)
+        models = os.path.dirname(os.path.normpath(model_dir))
+        model_name = os.path.basename(os.path.normpath(model_dir))
+    
     if not os.path.exists(model_dir):
         print("[SQANTI-SIM] Untar NanoSim model")
         cwd = os.getcwd()
         os.chdir(models)
         sys.stdout.flush()
+        if args.read_type == "cDNA":
+            if os.path.isfile(model_name + ".tar.gz.partaa") and os.path.isfile(model_name + ".tar.gz.partab"):
+                os.system(" ".join(["cat", model_name + ".tar.gz.part*", ">", model_name + ".tar.gz"]))
+            else:
+                print("[SQANTI-SIM] ERROR: NanoSim cDNA pre-trained model is missing. Please check if %s exists." % (model_name + ".tar.gz.part*"), file=sys.stderr)
+                sys.exit(1)
         res = subprocess.run(["tar", "-xzf", model_name + ".tar.gz"])
         os.chdir(cwd)
         if res.returncode != 0:
             print("[SQANTI-SIM] ERROR: Unpacking NanoSim pre-trained model failed", file=sys.stderr)
             sys.exit(1)
+
+    if args.read_type == "dRNA":
+        r_type = "dRNA"
+        uracil = True
+    elif args.read_type == "cDNA":
+        r_type = "cDNA_1D2"
+        uracil = False
+    else:
+        print("[SQANTI-SIM] ERROR not valid read_type value %s" % (args.read_type), file=sys.stderr)
+        return
 
     # Extract fasta transcripts
     print("[SQANTI-SIM] Extracting transcript sequences")
@@ -214,7 +454,7 @@ def ont_simulation(args):
         "-e",
         str(expr_f),
         "-c",
-        str(model_dir + "training"),
+        str(model_complete),
         "-o",
         os.path.join(args.dir, "ONT_simulated"),
         "-n",
@@ -388,4 +628,51 @@ def illumina_simulation(args):
     trans_index.to_csv(args.trans_index, sep="\t", header=True, index=False, na_rep="NA")
 
     print("[SQANTI-SIM] Polyester simulation done")
+    return
+
+def CAGE_simulation(args):
+    """Simulate a sample-specific CAGE peak BED file"""
+
+    print("[SQANTI-SIM] Simulating CAGE peaks with cage_sim.py")
+    src_dir = os.path.dirname(os.path.realpath(__file__))
+    cagesim = os.path.join(src_dir, "cage_sim.py")
+
+    sr1=os.path.join(args.dir, "Illumina_simulated_1.fasta")
+    sr2=os.path.join(args.dir, "Illumina_simulated_2.fasta")
+    srfofn=os.path.join(args.dir, "Illumina_simulated.fofn")
+    with open(srfofn, "w") as fofn:
+        fofn.write(sr1 + " " + sr2)
+    fofn.close()
+
+    cmd = [
+        cagesim,
+        "sim",
+        "--trans_index",
+        str(args.trans_index),
+        "--gtf",
+        str(args.gtf),
+        "--genome",
+        str(args.genome),
+        "--short_reads",
+        str(srfofn),
+        "--falseCAGE_prop",
+        str(args.falseCAGE_prop),
+        "--dir",
+        str(args.dir),
+        "-t",
+        str(args.cores)
+    ]
+
+    if args.CAGE_model:
+        cmd.extend(["--CAGE_model", str(args.CAGE_model)])
+    if args.seed:
+        cmd.extend(["--seed", str(args.seed)])
+
+
+    cmd = " ".join(cmd)
+    sys.stdout.flush()
+    if subprocess.check_call(cmd, shell=True) != 0:
+        print("ERROR running cage_sim.py: {0}".format(cmd), file=sys.stderr)
+        sys.exit(1)
+
     return

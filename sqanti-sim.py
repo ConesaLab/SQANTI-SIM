@@ -2,14 +2,16 @@
 """
 sqanti-sim.py
 
-Wrapper for long-read RNA-seq simulators (NanoSim and IsoSeqSim) to simulate
-controlled novelty and degradation of transcripts based on SQANTI3 structural
-categories
+SQANTI-SIM: a simulator of controlled novelty and degradation of transcripts
+sequenced by long-reads
 
-Author: Jorge Mestre Tomas (jormart2@alumni.uv.es)
+Wrapper script to execute all modules of the SQANTI-SIM pipeline, including 
+existing long-read RNA-seq simulators such as NanoSim, PBSIM3, and IsoSeqSim.
+
+Author: Jorge Mestre Tomas (jorge.mestre.tomas@csic.es)
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 import argparse
 import numpy
@@ -85,7 +87,7 @@ def design(input: list):
     parser_e.add_argument("--gtf", type=str, required=True, help="\t\ttComplete reference annotation in GTF format", )
     parser_e.add_argument("-o", "--output", type=str, default=str(), help="\t\tPrefix for output files" )
     parser_e.add_argument("-d", "--dir", type=str, default=".", help="\t\tDirectory for output files (default: .)", )
-    parser_e.add_argument("-nt", "--trans_number", type=int, default=10000, help="\t\tTotal number of transcripts to simulate", )
+    parser_e.add_argument("-nt", "--trans_number", type=int, default=30000, help="\t\tTotal number of transcripts to simulate", )
     parser_e.add_argument("--read_count", default=50000, type=int, help="\t\tNumber of reads to simulate", )
     parser_e.add_argument("--ISM", type=int, default=0, help="\t\tNumber of incomplete-splice-matches to simulate", )
     parser_e.add_argument("--NIC", type=int, default=0, help="\t\tNumber of novel-in-catalog to simulate", )
@@ -103,7 +105,7 @@ def design(input: list):
     parser_c.add_argument("--gtf", type=str, required=True, help="\t\ttComplete reference annotation in GTF format", )
     parser_c.add_argument("-o", "--output", type=str, default=str(), help="\t\tPrefix for output files" )
     parser_c.add_argument("-d", "--dir", type=str, default=".", help="\t\tDirectory for output files (default: .)", )
-    parser_c.add_argument("-nt", "--trans_number", type=int, default=10000, help="\t\tTotal number of transcripts to simulate", )
+    parser_c.add_argument("-nt", "--trans_number", type=int, default=30000, help="\t\tTotal number of transcripts to simulate", )
     parser_c.add_argument("--nbn_known", type=float, default=15, help="\t\tAverage read count per known transcript to simulate (the parameter 'n' of the Negative Binomial distribution)", )
     parser_c.add_argument("--nbp_known", type=float, default=0.5, help="\t\tThe parameter 'p' of the Negative Binomial distribution for known transcripts", )
     parser_c.add_argument("--nbn_novel", type=float, default=5, help="\t\tAverage read count per novel transcript to simulate (the parameter 'n' of the Negative Binomial distribution)", )
@@ -126,14 +128,15 @@ def design(input: list):
     parser_s.add_argument("-d", "--dir", type=str, default=".", help="\t\tDirectory for output files (default: .)", )
     parser_s.add_argument("-nt", "--trans_number", type=int, default=None, help="\t\tTotal number of transcripts to simulate", )
     parser_s.add_argument("--genome", type=str, required=True, help="\t\tReference genome FASTA", )
-    group = parser_s.add_mutually_exclusive_group()
-    group.add_argument("--pb_reads", type=str, default=str(), help="\t\tInput PacBio reads for characterization in FASTA or FASTQ format", )
-    group.add_argument("--ont_reads", type=str, default=str(), help="\t\tInput ONT reads for characterization in FASTA or FASTQ format", )
-    group.add_argument("--mapped_reads", type=str, default=str(), help="\t\tAligned reads in SAM format", )
+    group1 = parser_s.add_mutually_exclusive_group()
+    group1.add_argument("--expr_file", type=str, default=str(), help="\t\tA 3-column tab-separated file containing (i) gene name, (ii) transcript name and (iii) transcript read count", )
+    group1.add_argument("--long_reads", type=str, default=str(), help="\t\tInput long reads for characterization in FASTA or FASTQ format", )
+    group2 = parser_s.add_mutually_exclusive_group()
+    group2.add_argument("--pb", action="store_true", help="\t\tIf used the program will use PacBio settings", )
+    group2.add_argument("--ont", action="store_true", help="\t\tIf used the program will use ONT settings", )
     parser_s.add_argument("--iso_complex", action="store_true", help="\t\tIf used the program will approximate the expressed isoform complexity (number of isoforms per gene)", )
-    parser_s.add_argument("--diff_exp", action="store_true", help="\t\tIf used the program will assign different expression values for novel and known transcripts", )
-    parser_s.add_argument("--low_prob", type=float, default=0.1, help="\t\tLow value of prob vector (if --diff_exp)", )
-    parser_s.add_argument("--high_prob", type=float, default=0.9, help="\t\tHigh value of prob vector (if --diff_exp)", )
+    parser_s.add_argument("--diff_exp", type=float, default=2.0, help="\t\tFactor for adjusting the odds of novel and known transcripts expression assignments. A value of 0 means no bias between the two types. A higher value increases the bias towards novel transcripts having lower expression. (default: 2.0)", )
+    parser_s.add_argument("--read_type", type=str, default="cDNA", help="\t\tRead type for ONT expression level (if --ont)", choices=["cDNA", "dRNA"])
     parser_s.add_argument("--ISM", type=int, default=0, help="\t\tNumber of incomplete-splice-matches to simulate", )
     parser_s.add_argument("--NIC", type=int, default=0, help="\t\tNumber of novel-in-catalog to simulate", )
     parser_s.add_argument("--NNC", type=int, default=0, help="\t\tNumber of novel-not-in-catalog to simulate", )
@@ -147,19 +150,34 @@ def design(input: list):
     
     args, unknown = parser.parse_known_args(input)
 
+    if not os.path.isdir(args.dir):
+        os.makedirs(args.dir)
+
+    if not args.output:
+        output = os.path.basename(args.trans_index).split("_")
+        args.output = "_".join(output[:-1])
+
     if unknown:
-        print("[SQANTI-SIM] design mode unrecognized arguments: {}\n".format(" ".join(unknown)), file=sys.stderr)
+        print("[SQANTI-SIM] design mode unrecognized arguments: {}\n".format(" ".join(unknown)))
 
     total_novel = sum([args.ISM, args.NIC, args.NNC, args.Fusion, args.Antisense, args.GG, args.GI, args.Intergenic])
     if args.trans_number is not None and total_novel > args.trans_number:
         print("[SQANTI-SIM] WARNING: -nt is lower than the novel transcripts to simulate, only novel transcripts will be simulated", file=sys.stderr)
 
-    if not os.path.isdir(args.dir):
-        os.makedirs(args.dir)
-    
-    if not args.output:
-        output = os.path.basename(args.trans_index).split("_")
-        args.output = "_".join(output[:-1])
+    if total_novel <= 0:
+        print("[SQANTI-SIM] WARNING: No novel transcript type has been specified. Proceed using the default value.", file=sys.stderr)
+        args.ISM = 5000
+        args.NIC = 2500
+        args.NNC = 2500
+        args.Fusion = 1000
+        args.Antisense = 1000
+        args.GG = 1000
+        args.GI = 1000
+        args.Intergenic = 1000
+
+        total_novel = sum([args.ISM, args.NIC, args.NNC, args.Fusion, args.Antisense, args.GG, args.GI, args.Intergenic])
+        if args.trans_number is not None and total_novel > args.trans_number:
+            args.trans_number = args.trans_number + total_novel
 
     if not args.seed:
         args.seed = int.from_bytes(os.urandom(1), 'big')
@@ -194,20 +212,28 @@ def design(input: list):
         print("[SQANTI-SIM] - Novel NB probability:", str(args.nbp_novel))
 
     elif args.mode == "sample":
-        if args.low_prob < 0 or args.low_prob > 1 or args.high_prob < 0 or args.high_prob > 1:
-            print("[SQANTI-SIM] ERROR: --low_prob and --high_prob must be in the interval [0,1]", file=sys.stderr)
+        if args.long_reads and (not args.pb and not args.ont):
+            print("[SQANTI-SIM] ERROR: specify --pb or --ont when using --long_reads", file=sys.stderr)
             sys.exit(1)
-
+            
         print("[SQANTI-SIM] - Mode: sample")
         print("[SQANTI-SIM] - Ref GTF:", str(args.gtf))
         print("[SQANTI-SIM] - Ref genome:", str(args.genome))
         print("[SQANTI-SIM] - Out prefix:", str(args.output))
         print("[SQANTI-SIM] - Out dir:", str(args.dir))
         print("[SQANTI-SIM] - N transcripts:", str(args.trans_number))
-        if args.pb_reads:
-            print("[SQANTI-SIM] - PacBio reads:", str(args.pb_reads))
+        print("[SQANTI-SIM] - Diff expression:", str(args.diff_exp))
+
+        if args.long_reads:
+            print("[SQANTI-SIM] - Long reads:", str(args.long_reads))
         else:
-            print("[SQANTI-SIM] - ONT reads:", str(args.ont_reads))
+            print("[SQANTI-SIM] - Expression file:", str(args.expr_file))
+        
+        if args.pb:
+            print("[SQANTI-SIM] - Platform: PacBio")
+        elif args.ont:
+            print("[SQANTI-SIM] - Platform: ONT")
+
         print("[SQANTI-SIM] - N threads:", str(args.cores))
 
     print("[SQANTI-SIM] - Seed:", str(args.seed))
@@ -248,10 +274,7 @@ def design(input: list):
         design_simulation.create_expr_file_nbinom(index_file, args)
 
     elif args.mode == "sample":
-        if args.pb_reads:
-            design_simulation.create_expr_file_sample(index_file, args, "pb")
-        else:
-            design_simulation.create_expr_file_sample(index_file, args, "ont")
+            design_simulation.create_expr_file_sample(index_file, args)
 
     print("[SQANTI-SIM][%s] design step finished" %(strftime("%d-%m-%Y %H:%M:%S")))
     
@@ -272,19 +295,36 @@ def sim(input: list):
     parser.add_argument("-i", "--trans_index", type=str, required=True, help="\t\tFile with transcript information generated with SQANTI-SIM (*_index.tsv)", )
     parser.add_argument("--read_type", type=str, default="cDNA", help="\t\tRead type for NanoSim simulation (if --ont)", choices=["cDNA", "dRNA"])
     parser.add_argument("-d", "--dir", type=str, default=".", help="\t\tDirectory for output files (default: .)", )
-    parser.add_argument("-k", "--cores", type=int, default=1, help="\t\tNumber of cores to run in parallel", )
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--pb", action="store_true", help="\t\tIf used the program will simulate PacBio reads with IsoSeqSim", )
-    group.add_argument("--ont", action="store_true", help="\t\tIf used the program will simulate ONT reads with NanoSim", )
+    parser.add_argument("-k", "--cores", type=int, default=8, help="\t\tNumber of cores to run in parallel", )
+    parser.add_argument("--pass_num", type=int, default=6, help="\t\tThe argument is only used when --pbsim is employed to simulate reads. If the number of passes (--pass_num) is two or more, multi-pass sequencing is performed to construct HiFi reads.", )
+
+    parser.add_argument("--pb",  action="store_true", help="\t\tIf used the program will simulate PacBio reads (by default with PBSIM3, but can be changed)", )
+    parser.add_argument("--ont", action="store_true", help="\t\tIf used the program will simulate ONT reads with NanoSim", )
+    group = parser.add_mutually_exclusive_group(required=False)
+    group.add_argument("--isoseqsim", action="store_true", help="\t\tIf used the program will simulate PacBio reads with IsoSeqSim", )
+    group.add_argument("--pbsim", action="store_true", help="\t\tIf used the program will simulate PacBio reads with PBSIM3", )
+    
     parser.add_argument("--illumina", action="store_true", help="\t\tIf used the program will simulate Illumina reads with Polyester", )
+    parser.add_argument("--CAGE", action="store_true", help="\t\tIf used the program will simulate a sample-specific CAGE peak BED file and automatically simulate short-reads as well", )
     parser.add_argument("--long_count", type=int, default=None, help="\t\tNumber of long reads to simulate (if not given it will use the requested_counts from the --trans_index file)", )
     parser.add_argument("--short_count", type=int, default=None, help="\t\tNumber of short reads to simulate (if not given it will use the requested_counts from the --trans_index file)", )
+    parser.add_argument("--nanosim_model", type=str, default=None, help="\t\tDirectory of the pre-trained NanoSim model")
+    parser.add_argument("--CAGE_model", type=str, default=None, help="\t\tDirectory of the pre-trained CAGE model")
+    parser.add_argument("--falseCAGE_prop", type=float, default=0.2, help="\t\tProportion (0, 1) of simulated CAGE peaks that are not derived from actual TSS locations (default: 0.2)")
     parser.add_argument("-s", "--seed", type=int, default=None, help="\t\tRandomizer seed", )
 
     args, unknown = parser.parse_known_args(input)
 
     if unknown:
-        print("[SQANTI-SIM] sim mode unrecognized arguments: {}\n".format(" ".join(unknown)), file=sys.stderr)
+        print("[SQANTI-SIM] sim mode unrecognized arguments: {}\n".format(" ".join(unknown)))
+    
+    if not args.ont and not args.pb and not args.isoseqsim and not args.pbsim:
+        print("sqanti-sim.py sim: error: one of the arguments --ont --pb --isoseqsim --pbsim is required", file=sys.stderr)
+        sys.exit(1)
+
+    if args.ont and (args.pb or args.isoseqsim or args.pbsim):
+        print("sqanti-sim.py sim: error: argument --ont: not allowed with arguments --pb --pbsim or --isoseqsim", file=sys.stderr)
+        sys.exit(1)
 
     if not args.seed:
         args.seed = int.from_bytes(os.urandom(1), 'big')
@@ -300,6 +340,7 @@ def sim(input: list):
     if args.ont:
         print("[SQANTI-SIM] - Platform: ONT")
         print("[SQANTI-SIM] - Read type:", str(args.read_type))
+        print("[SQANTI-SIM] - NanoSim model:", str(args.nanosim_model))
     else:
         print("[SQANTI-SIM] - Platform: PacBio")
     
@@ -308,26 +349,39 @@ def sim(input: list):
     else:
         print("[SQANTI-SIM] - Long reads: requested_counts from index file")
     
-    if args.illumina:
+    if args.illumina or args.CAGE:
         print("[SQANTI-SIM] - Platform: Illumina")
         if args.short_count:
             print("[SQANTI-SIM] - Short reads:", str(args.short_count))
         else:
             print("[SQANTI-SIM] - Short reads: requested_counts from index file")
+    
+    if args.CAGE:
+        print("[SQANTI-SIM] - CAGE: Yes")
+        print("[SQANTI-SIM] - CAGE model dir:", str(args.CAGE_model))
+    else:
+        print("[SQANTI-SIM] - CAGE: No")
+    
 
     print("[SQANTI-SIM] - N threads:", str(args.cores))
     print("[SQANTI-SIM] - Seed:", str(args.seed))
 
-    # Simulation with IsoSeqSim, NanoSim and/or Polyester
-    if args.pb:
-        print("\n[SQANTI-SIM][%s] Simulating PacBio reads" %(strftime("%d-%m-%Y %H:%M:%S")))
-        simulate_reads.pb_simulation(args)
+    # Simulation with IsoSeqSim, NanoSim, Polyester and/or CAGEsim
+    if args.isoseqsim:
+        print("\n[SQANTI-SIM][%s] Simulating PacBio reads using IsoSeqSim" %(strftime("%d-%m-%Y %H:%M:%S")))
+        simulate_reads.isoseqsim_simulation(args)
+    if args.pb or args.pbsim:
+        print("\n[SQANTI-SIM][%s] Simulating PacBio reads using PBSIM3" %(strftime("%d-%m-%Y %H:%M:%S")))
+        simulate_reads.pbsim_simulation(args)
     if args.ont:
         print("\n[SQANTI-SIM][%s] Simulating ONT reads" %(strftime("%d-%m-%Y %H:%M:%S")))
         simulate_reads.ont_simulation(args)
-    if args.illumina:
+    if args.illumina or args.CAGE:
         print("\n[SQANTI-SIM][%s] Simulating Illumina reads" %(strftime("%d-%m-%Y %H:%M:%S")))
         simulate_reads.illumina_simulation(args)
+    if args.CAGE:
+        print("\n[SQANTI-SIM][%s] Simulating CAGE peaks" %(strftime("%d-%m-%Y %H:%M:%S")))
+        simulate_reads.CAGE_simulation(args)
 
     print("[SQANTI-SIM][%s] sim step finished" %(strftime("%d-%m-%Y %H:%M:%S")))
 
@@ -417,7 +471,8 @@ print(
 
 if len(sys.argv) < 2:
     print("[SQANTI-SIM] usage: python sqanti-sim.py <mode> --help\n", file=sys.stderr)
-    print("[SQANTI-SIM] modes: classif, design, sim, eval\n", file=sys.stderr)
+    print("[SQANTI-SIM] modes: classif, design, sim, full-sim, eval\n", file=sys.stderr)
+    print("[SQANTI-SIM] full-sim: classif + design + sim\n", file=sys.stderr)
     sys.exit(1)
 
 else:
@@ -439,6 +494,23 @@ elif mode == "sim":
 elif mode == "eval":
     print("[SQANTI-SIM] EVAL MODE")
     res = eval(input)
+
+elif mode == "full-sim":
+    print("[SQANTI-SIM] FULL-SIM MODE (CLASSIF + DESIGN + SIM)\n")
+    
+    print("[SQANTI-SIM] CLASSIF MODE")
+    res = classif(input)
+
+    print("[SQANTI-SIM] DESIGN MODE")
+    # Parse generated index file
+    dir = next((input[i+1] for i, value in enumerate(input) if (value == "-d" or value == "--dir") and i < len(input) - 1), ".")
+    output = next((input[i+1] for i, value in enumerate(input) if (value == "-o" or value == "--output") and i < len(input) - 1), "sqanti-sim")
+    input.append("--trans_index")
+    input.append(os.path.join(dir, (output + "_index.tsv")))
+    res = design(input)
+
+    print("[SQANTI-SIM] SIM MODE")
+    res = sim(input)
 
 elif mode in ["--version", "-v"]:
     print("[SQANTI-SIM] SQANTI-SIM %s\n" %(__version__))
