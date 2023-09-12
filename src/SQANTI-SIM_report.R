@@ -29,50 +29,24 @@ suppressMessages(library(tidyr))
 #                                     #
 #######################################
 
-gene_level_metrics <- function(data.query, data.index, MAX_TSS_TTS_DIFF, min_supp=0){
-  # Simulated ref transcripts
-  if (min_supp > 0){
-    idx <- data.index[which(data.index$sim_counts >= min_supp), ]
-  } else {
-    idx <- data.index
-  }
-  data.novel <- idx[which(idx$sim_type == 'novel'),]
-  data.known <- idx[which(idx$sim_type == 'known'),]
-  sim.sc <- unique(data.novel$structural_category)
+gene_level_metrics <- function(data.query, data.index, MAX_TSS_TTS_DIFF){
+  data.index <- data.index[data.index$sim_counts > 1, ]
+  TP_genes <- unique(data.index$gene_id[data.index$pipeline_performance != "FN"])
+  FN_genes <- unique(data.index$gene_id[!data.index$gene_id %in% TP_genes])
+  FP_genes <- unique(data.query$associated_gene[!(data.query$associated_gene %in% TP_genes | data.query$associated_gene %in% FN_genes) & !(data.query$isoform %in% data.index$pipeline_performance)])
   
-  # Matches between simulated and reconstructed transcripts:
-  # First all splice-junctions must be identical
-  # Second, difference between the annotated and reconstructed TSS and TTS must be smaller than MAX_TSS_TTS_DIFF
-  matches <- inner_join(data.query, idx, by=c('junctions', 'chrom')) %>%
-    mutate(diffTSS = abs(TSS_genomic_coord.x - TSS_genomic_coord.y), diffTTS = abs(TTS_genomic_coord.x - TTS_genomic_coord.y), difftot = diffTSS+diffTTS) %>%
-    arrange(difftot) %>%
-    distinct(isoform, .keep_all = T)
-  #matches <- matches[which(matches$sim_type != "absent"),]
-  perfect.matches <- matches[which(matches$diffTSS < MAX_TSS_TTS_DIFF & matches$diffTTS < MAX_TSS_TTS_DIFF),]
-  cond <- (perfect.matches$exons > 1) | (perfect.matches$strand.x == '+' & perfect.matches$TSS_genomic_coord.x <= perfect.matches$TTS_genomic_coord.y & perfect.matches$TSS_genomic_coord.y <= perfect.matches$TTS_genomic_coord.x) | (perfect.matches$strand.x == '-' & perfect.matches$TTS_genomic_coord.x <= perfect.matches$TSS_genomic_coord.y & perfect.matches$TTS_genomic_coord.y <= perfect.matches$TSS_genomic_coord.x)
-  perfect.matches <- perfect.matches[cond,]
-  
-  sim_genes <- idx$gene_id[idx$sim_counts > 0]
-  sim_genes <- sim_genes[!duplicated(sim_genes)]
-  matched_genes <- perfect.matches$gene_id[perfect.matches$gene_id %in% sim_genes]
-  matched_genes <- matched_genes[!duplicated(matched_genes)]
-  
-  fp_genes <- data.query[!(data.query$isoform %in% perfect.matches$isoform),]
-  fp_genes <- data.query[!(data.query$associated_gene %in% matched_genes),]
-  fp_genes <- fp_genes$associated_gene[!duplicated(fp_genes$associated_gene)]
-  
-  TP <-  length(matched_genes)
-  FP <- length(fp_genes)
-  FN <- length(sim_genes)-length(matched_genes)
+  TP <-  length(TP_genes)
+  FP <- length(FP_genes)
+  FN <- length(FN_genes)
   PTP <- 0
-  sensitivity <- TP/length(sim_genes)
+  sensitivity <- TP/(TP + FN)
   precision <- TP/(TP+FP)
   
-  gene.metrics <- c("Total" = length(sim_genes), "TP" = TP, "PTP" = PTP,
+  gene.metrics <- c("Total" = (TP + FN), "TP" = TP, "PTP" = PTP,
                     "FP" = FP, "FN" = FN, "Sensitivity" = sensitivity, "Precision" = precision, 
                     "F-score" = (2*(precision*sensitivity)/(precision+sensitivity)),
                     "False_Discovery_Rate" = (FP + PTP) / (FP + PTP +  TP),
-                    "Positive_Detection_Rate" = (TP + PTP) / length(sim_genes),
+                    "Positive_Detection_Rate" = (TP + PTP) / (TP + FN),
                     "False_Detection_Rate" = (FP) / (FP + PTP + TP))
   
   return(gene.metrics)
@@ -353,6 +327,30 @@ res.full$data.summary$match_type <- factor(res.full$data.summary$match_type, lev
 res.min$data.summary$match_type[which(res.min$data.summary$match_type == "PTP")] <- "FN"
 res.min$data.summary$match_type <- factor(res.min$data.summary$match_type, levels = c("TP", "FN"))
 
+data.index <- data.index[data.index[,"sim_counts"] > 0, 
+                         c("transcript_id", "gene_id", "structural_category", "exons", "length", "sim_type", "sim_counts", "pipeline_performance", "within_CAGE_peak", "min_cov")]
+data.index$pipeline_performance <- as.character(data.index$pipeline_performance)
+
+data.class$pipeline_performance <- ifelse(data.class$isoform %in% data.index$pipeline_performance, "TP", "FP")
+
+data.index$pipeline_performance[which(data.index$pipeline_performance != "FN")] <- "TP"
+data.index$structural_category[data.index$sim_type == "known"] <- "FSM"
+
+if ('min_cov' %in% colnames(data.index) & "within_CAGE_peak" %in% colnames(data.index)) {
+  dataTPFNFP <- rbind(data.index[, c("structural_category", "exons", "length", "min_cov", "within_CAGE_peak", "pipeline_performance")],
+                      data.class[data.class$pipeline_performance == "FP", c("structural_category", "exons", "length",  "min_cov", "within_CAGE_peak", "pipeline_performance")])
+} else if ('min_cov' %in% colnames(data.index)) {
+  dataTPFNFP <- rbind(data.index[, c("structural_category", "exons", "length", "min_cov", "pipeline_performance")],
+                      data.class[data.class$pipeline_performance == "FP", c("structural_category", "exons", "length",  "min_cov", "pipeline_performance")])
+} else if ("within_CAGE_peak" %in% colnames(data.index)) {
+  dataTPFNFP <- rbind(data.index[, c("structural_category", "exons", "length", "within_CAGE_peak", "pipeline_performance")],
+                      data.class[data.class$pipeline_performance == "FP", c("structural_category", "exons", "length", "within_CAGE_peak", "pipeline_performance")])
+} else {
+  dataTPFNFP <- rbind(data.index[, c("structural_category", "exons", "length", "pipeline_performance")],
+                      data.class[data.class$pipeline_performance == "FP", c("structural_category", "exons", "length", "pipeline_performance")])
+}
+
+
 #######################################
 #                                     #
 #     TABLE AND PLOT GENERATION       #
@@ -405,452 +403,320 @@ mytheme <- theme_classic(base_family = "Helvetica") +
 
 # -------------------- 
 # TABLE 1: SQANTI-SIM metrics
-sketch = htmltools::withTags(table(
+sketch1 <- htmltools::withTags(table(
   class = 'display',
   thead(
     tr(
       th(rowspan = 2, ""),
-      th(rowspan = 2, "Genes"),
-      th(colspan = ncol(res.full$sqantisim.stats), "Isoform level")
+      th(colspan = 1, "Gene\nlevel"),
+      th(colspan = 2, "Transcript level"),
+      th(colspan = ncol(res.full$sqantisim.stats) - 2, "Structural categories")
     ),
     tr(
-      lapply(colnames(res.full$sqantisim.stats), th)
+      lapply(c("Genes", colnames(res.full$sqantisim.stats)), th)
     )
   )
 ))
 
-t1 <- DT::datatable(cbind("Genes"=res.gene, res.full$sqantisim.stats), container=sketch, class = 'compact', extensions = "Buttons", options = list(pageLength = 15, dom = 'Bfrtip', buttons = c("copy", "csv", "pdf"))) %>%
+sketch2 <- htmltools::withTags(table(
+  class = 'display',
+  thead(
+    tr(
+      th(rowspan = 2, ""),
+      th(colspan = 2, "Transcript level"),
+      th(colspan = sum(res.full$sqantisim.stats["Total",] > 0) - 2, "Structural categories")
+    ),
+    tr(
+      lapply(colnames(res.full$sqantisim.stats[,res.full$sqantisim.stats["Total",] > 0]), th)
+    )
+  )
+))
+
+
+t1 <- DT::datatable(cbind("Genes"=res.gene, res.full$sqantisim.stats), 
+                    container=sketch1, class = 'compact', extensions = "Buttons", 
+                    options = list(pageLength = 15, dom = 't', buttons = c("copy", "csv", "pdf")),
+                    caption = htmltools::tags$caption(
+                      style = 'caption-side: bottom; text-align: center;','Table 3: ',
+                      htmltools::em('SQANTI-SIM evaluation of transcriptome reconstruction.'))) %>%
   formatRound(c("Genes", colnames(res.full$sqantisim.stats)), digits = 3, rows=c(6:11), zero.print = 0)
 write.table(cbind("Genes"=res.gene, res.full$sqantisim.stats), file = paste(output_directory, 'SQANTI-SIM_metrics.tsv', sep = "/"), quote = F, sep = "\t", na = "NA",row.names = F, col.names = c("Genes", gsub("\n", "_", colnames(res.full$sqantisim.stats))))
 
 # TABLE 2: SQANTI-SIM metrics above min_supp
-t2 <- DT::datatable(res.min$sqantisim.stats, class = 'compact', extensions = "Buttons", options = list(pageLength = 15, dom = 'Bfrtip', buttons = c("copy", "csv", "pdf"))) %>%
-  formatRound(colnames(res.min$sqantisim.stats), digits = 3, rows=c(4), zero.print = 0)
-write.table(res.min$sqantisim.stats, file = paste(output_directory, 'SQANTI-SIM_metrics_min_supp.tsv', sep = "/"), quote = F, sep = "\t", na = "NA",row.names = F, col.names = gsub("\n", "_", colnames(res.min$sqantisim.stats)))
+min.sqantisim.stats <- res.min$sqantisim.stats[, colnames(res.full$sqantisim.stats[,res.full$sqantisim.stats["Total",] > 0])]
+t2 <- DT::datatable(min.sqantisim.stats, container = sketch2, class = 'compact', extensions = "Buttons", 
+                    options = list(pageLength = 15, dom = 't', buttons = c("copy", "csv", "pdf")),
+                    caption = htmltools::tags$caption(
+                      style = 'caption-side: bottom; text-align: center;','Table 4: ',
+                      htmltools::em(paste0('SQANTI-SIM sensititvity evaluation for transcripts with at least ', min.supp, " simulated reads.")))) %>%
+  formatRound(colnames(min.sqantisim.stats), digits = 3, rows=c(4), zero.print = 0)
+write.table(min.sqantisim.stats, file = paste(output_directory, 'SQANTI-SIM_metrics_min_supp.tsv', sep = "/"), quote = F, sep = "\t", na = "NA",row.names = F, col.names = gsub("\n", "_", colnames(min.sqantisim.stats)))
 
 # -------------------- PLOT FULL
 # PLOT 1: Simulated and reconstructed isoform distribution
 p1A <- data.index[data.index$sim_counts >= 1, ] %>%
-  mutate(structural_category = ifelse(sim_type == "known", "FSM", as.character(structural_category))) %>% 
+  mutate(structural_category = ifelse(sim_type == "known", "FSM", as.character(structural_category))) %>%
+  mutate(structural_category = factor(structural_category, levels = xaxislabelsF1, ordered=TRUE)) %>% 
   ggplot(aes(x=structural_category)) +
   geom_bar(aes(y = (..count..)/sum(..count..)*100, fill=structural_category), color="black", linewidth=0.3, width=0.7) +
   scale_x_discrete(drop=FALSE) + 
-  xlab('') + 
-  ylab('Transcripts %') +
   mytheme +
   geom_blank(aes(y=((..count..)/sum(..count..))), stat = "count") +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, size=12)) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, size=12)) +
   scale_fill_manual(values = cat.palette, guide='none') +
   ggtitle("Simulated isoforms" ) +
-  theme(axis.title.x=element_blank()) +
+  theme(axis.title.x=element_blank(),
+        axis.title.y = element_blank()) +
   theme(legend.justification=c(1,1), legend.position=c(1,1))
 
 p1B <- data.class %>%
   ggplot(aes(x=structural_category)) +
-  geom_bar(aes(y = (..count..)/sum(..count..)*100, fill=structural_category), color="black", size=0.3, width=0.7) +
+  geom_bar(aes(y = (..count..)/sum(..count..)*100, fill=structural_category, alpha = pipeline_performance), color="black", size=0.3, width=0.7) +
   scale_x_discrete(drop=FALSE) + 
-  xlab('') + 
-  ylab('Transcripts %') +
+  scale_alpha_manual(values = c(0.2, 1), name = "Trancript model calls") +
   mytheme +
   geom_blank(aes(y=((..count..)/sum(..count..))), stat = "count") +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, size=12)) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, size=12)) +
   scale_fill_manual(values = cat.palette, guide='none') +
   ggtitle("Reconstructed transcript models" ) +
-  theme(axis.title.x=element_blank()) +
-  theme(legend.justification=c(1,1), legend.position=c(1,1))
+  theme(axis.title.x=element_blank(),
+        axis.title.y = element_blank())
 
 p1 <- annotate_figure(
-  ggarrange(p1A, p1B, ncol = 2, align = "h"),
-  top = text_grob("Isoform Distribution Across Structural Categories", size = 16)
+  ggarrange(p1A, p1B, ncol = 2, align = "h", common.legend = T, legend = "bottom"),
+  left = "Transcripts %"
 )
 
-# PLOT 3: TP vs FN - mono/multi-exon
-p2 <- res.full$data.summary %>%
-  mutate(exon_type=ifelse(exons > 1, 'multi-exon', 'mono-exon')) %>%
-  mutate(exon_type = factor(exon_type, levels = c('multi-exon', 'mono-exon')),
-         match_type = factor(match_type, levels = c("FN", "TP"))) %>% 
-  group_by(structural_category, match_type, exon_type) %>%
-  summarise(value=n()) %>%
-  ggplot(aes(x=structural_category)) +
-  geom_bar(aes(fill=structural_category, y=value, alpha=match_type), position="stack", stat="identity") +
-  facet_wrap(. ~ exon_type, scale = "free") +
-  scale_fill_manual(values=cat.palette, guide='none') +
-  scale_alpha_manual(values=c("TP" = 1, "FN" = 0.5), name='Pipeline performance') +
+# PLOT 2: Sn - Pr - F1
+p2 <- cbind(data.frame(Gene = c(res.gene["Sensitivity"], res.gene["Precision"], res.gene["F-score"])),
+      res.full$sqantisim.stats[c("Sensitivity", "Precision", "F-score"), colnames(res.full$sqantisim.stats[, res.full$sqantisim.stats["Total",] > 0])]) %>% 
+  mutate(stat = rownames(.)) %>% 
+  select(!FSM) %>% 
+  pivot_longer(!stat, names_to = "sim_level", values_to = "value") %>% 
+  mutate(sim_level = factor(sim_level,
+                            levels = rev(c("Gene", colnames(res.full$sqantisim.stats))))) %>% 
+  ggplot(aes(y = value, color = stat, x = sim_level)) +
+  geom_point(size=3.5) +
+  theme_classic() +
   mytheme +
-  ylab('No. of transcripts') +
-  xlab('')+
-  ggtitle('Single- and Multi-exon identifications') +
-  theme(legend.position = "bottom")
+  scale_x_discrete(labels = c("Gene" = "Gene level", "Known" = "Kwnown\ntranscript level", "Novel" = "Novel\ntranscript level")) +
+  scale_color_manual(values = c("#15918A", "#F58A53", "#FDC659"), name="", labels = c("F1-score", "Precision", "Sensitivity")) +
+  ylim(c(0,1)) +
+  coord_flip() +
+  theme(panel.grid.major.y = element_line(color = "grey", size = 0.5, linetype = 2)) +
+  theme(legend.position="top") + 
+  theme(panel.spacing = unit(2, "lines")) +
+  theme(axis.title.x = element_blank(), 
+        axis.title.y = element_blank())
 
-p3.min <- res.min$data.summary %>%
-  mutate(exon_type=ifelse(exons > 1, 'multi-exon', 'mono-exon')) %>%
-  group_by(structural_category, match_type, exon_type) %>%
-  summarise(value=n()) %>%
-  ggplot(aes(x=structural_category)) +
-  geom_bar(aes(fill=match_type, y=value, alpha=exon_type), position="fill", stat="identity") +
-  scale_fill_manual(values=myPalette, name='Stats') +
-  scale_alpha_manual(values=c(0.5,1), name='Exons') +
+# PLOT 3: Sim reads
+data.index$TPM <- (data.index$sim_counts/sum(data.index$sim_counts))*1000000
+data.index$pipeline_performance <- factor(data.index$pipeline_performance, levels = c("TP", "FN", "FP"))
+p3 <- ggplot(data.index[data.index$structural_category %in% colnames(res.full$sqantisim.stats[,res.full$sqantisim.stats["Total",] > 0]), ], aes(x=structural_category, y=log(TPM+1), fill=structural_category, alpha=pipeline_performance)) +
+  geom_boxplot(outlier.shape = NA, position = position_dodge(0.8), color = "#656565", width = 0.5) +
+  scale_fill_manual(values = cat.palette, name = "Structural category", guide = "none") +
+  scale_alpha_manual(values=c("TP" = 1, "FN" = 0.5), name="Pipeline performance", guide = "none") +
+  theme_classic() +
   mytheme +
-  ylab('Percentage %') +
-  xlab('')+
-  ggtitle('Single- and Multi-exon identifications (min. supp.)')
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  ylab("Log simulated reads") +
+  coord_cartesian(ylim = c(quantile(log(dataTPFNFP$TPM + 1), probs = c(0.05, 0.95)))) + 
+  theme(axis.title.x = element_blank(),
+        axis.title.y  = element_text(size=16)) +
+  theme(plot.subtitle = element_text(hjust = 0.5),
+        plot.title.position = "plot") +
+  theme(legend.position = "bottom") +
+  guides(alpha = guide_legend(override.aes = list(linetype = 0, fill = "darkgrey"))) +
+  ggtitle("Simulated reads by structural category")
 
-
-# PLOT 4: canonical juncs
-data.query$match_type <- 'FP'
-data.query$match_type[which(data.query$isoform %in% res.full$novel.perfect.matches$isoform)] <- 'TP'
-data.query$match_type[which(data.query$isoform %in% res.full$known.perfect.matches$isoform)] <- 'TP'
-p4 <- data.query[which(!is.na(data.query$all_canonical)),] %>%
-  group_by(structural_category, match_type, all_canonical) %>%
-  summarise(value=n()) %>%
-  ggplot(aes(x=structural_category)) +
-  geom_bar(aes(fill=match_type, y=value, alpha=all_canonical), position="fill", stat="identity") +
-  scale_fill_manual(values=myPalette[1:2], name='Stats') +
-  scale_alpha_manual(values=c(1, 0.5), name='Junctions') +
+# PLOT 4: Number of exons
+dataTPFNFP$pipeline_performance <- factor(dataTPFNFP$pipeline_performance, levels = c("TP", "FN", "FP"))
+p4 <- ggplot(dataTPFNFP[dataTPFNFP$structural_category %in% colnames(res.full$sqantisim.stats[,res.full$sqantisim.stats["Total",] > 0]), ], aes(x=structural_category, y=exons, fill=structural_category, alpha=pipeline_performance)) +
+  geom_boxplot(outlier.shape = NA, position = position_dodge(0.8), color = "#656565", width = 0.5) +
+  scale_fill_manual(values = cat.palette, name = "Structural category", guide = "none") +
+  scale_alpha_manual(values=c("TP" = 1, "FN" = 0.5, "FP" = 0), name="Pipeline performance") +
+  scale_y_continuous(limits = quantile(dataTPFNFP$exons, c(0.1, 0.9))) +
+  theme_classic() +
   mytheme +
-  ylab('Percentage %') +
-  xlab('') +
-  ggtitle('Canonical or Non Canonical Junctions') +
-  theme(axis.text.x = element_text(angle = 45, margin=ggplot2::margin(17,0,0,0), size=10))
-
-# PLOT 5: Number of exons
-p5.1 <- ggplot(res.full$data.summary, aes(x=match_type, y=exons, fill=match_type)) +
-  geom_boxplot(alpha=1, outlier.shape = NA) +
-  mytheme +
-  scale_fill_manual(values=myPalette, name='Stats') +
-  scale_y_continuous(limits = quantile(res.full$data.summary$exons, c(0.1, 0.9))) +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  xlab("") +
   ylab("Number of exons") +
-  xlab("") +
-  ggtitle("Number of exons") +
-  guides(fill="none")
+  coord_cartesian(ylim = c(quantile(dataTPFNFP$exons, probs = c(0.05, 0.95)))) + 
+  theme(axis.title.x = element_blank(),
+        axis.title.y  = element_text(size=16),
+        axis.text.x = element_blank()) +
+  theme(plot.subtitle = element_text(hjust = 0.5),
+        plot.title.position = "plot") +
+  theme(legend.position = "bottom") +
+  guides(alpha = guide_legend(override.aes = list(linetype = 0, fill = "darkgrey"))) +
+  ggtitle("Number of exons by structural category")
 
-p5.2 <- ggplot(res.full$data.summary, aes(x=sim_match_type, y=exons, fill=sim_match_type)) +
-  geom_boxplot(alpha=1, outlier.shape = NA) +
+# PLOT 5: Transcript length
+p5 <- ggplot(dataTPFNFP[dataTPFNFP$structural_category %in% colnames(res.full$sqantisim.stats[,res.full$sqantisim.stats["Total",] > 0]), ], aes(x=structural_category, y=log(length), fill=structural_category, alpha=pipeline_performance)) +
+  geom_boxplot(outlier.shape = NA, position = position_dodge(0.8), color = "#656565", width = 0.5) +
+  scale_fill_manual(values = cat.palette, name = "Structural category", guide = "none") +
+  scale_alpha_manual(values=c("TP" = 1, "FN" = 0.5, "FP" = 0), name="Pipeline performance") +
+  theme_classic() +
   mytheme +
-  scale_fill_manual(values=myPalette, name='Stats') +
-  scale_y_continuous(limits = quantile(res.full$data.summary$exons, c(0.1, 0.9))) +
-  ylab("Number of exons") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
   xlab("") +
-  ggtitle("Number of exons") +
-  guides(fill="none") +
-  theme(axis.text.x = element_text(angle = 45, hjust=1))
+  ylab("Log transcript length")+
+  coord_cartesian(ylim = c(quantile(log(dataTPFNFP$length), probs = c(0.00005, 0.99995)))) + 
+  theme(axis.title.x = element_blank(),
+        axis.title.y  = element_text(size=16),
+        axis.text.x = element_blank()) +
+  theme(plot.subtitle = element_text(hjust = 0.5),
+        plot.title.position = "plot") +
+  theme(legend.position = "bottom") +
+  guides(alpha = guide_legend(override.aes = list(linetype = 0, fill = "darkgrey"))) +
+  ggtitle("Transcript length by structural category")
 
-if (nrow(res.min$data.summary) > 0){
-  p5.min.1 <- ggplot(res.min$data.summary, aes(x=match_type, y=exons, fill=match_type)) +
-    geom_boxplot(alpha=1, outlier.shape = NA) +
-    mytheme +
-    scale_fill_manual(values=myPalette, name='Stats') +
-    scale_y_continuous(limits = quantile(res.min$data.summary$exons, c(0.1, 0.9))) +
-    ylab("Number of exons") +
-    xlab("") +
-    ggtitle("Number of exons") +
-    guides(fill="none")
-  
-  p5.min.2 <- ggplot(res.min$data.summary, aes(x=sim_match_type, y=exons, fill=sim_match_type)) +
-    geom_boxplot(alpha=1, outlier.shape = NA) +
-    mytheme +
-    scale_fill_manual(values=myPalette, name='Stats') +
-    scale_y_continuous(limits = quantile(res.min$data.summary$exons, c(0.1, 0.9))) +
-    ylab("Number of exons") +
-    xlab("") +
-    ggtitle("Number of exons") +
-    guides(fill="none") +
-    theme(axis.text.x = element_text(angle = 45, hjust=1))
-}
-
-# PLOT 6: Length of transcripts
-p6.1 <- ggplot(res.full$data.summary, aes(x=match_type, y=length, fill=match_type)) +
-  geom_boxplot(alpha=1, outlier.shape = NA) +
-  mytheme +
-  scale_fill_manual(values=myPalette, name='Stats') +
-  scale_y_continuous(limits = quantile(res.full$data.summary$length, c(0.1, 0.9))) +
-  ylab("Transcript length (bp)") +
-  xlab("") +
-  ggtitle("Transcript length") +
-  guides(fill="none")
-
-p6.2 <- ggplot(res.full$data.summary, aes(x=sim_match_type, y=length, fill=sim_match_type)) +
-  geom_boxplot(alpha=1, outlier.shape = NA) +
-  mytheme +
-  scale_fill_manual(values=myPalette, name='Stats') +
-  scale_y_continuous(limits = quantile(res.full$data.summary$length, c(0.1, 0.9))) +
-  ylab("Transcript length (bp)") +
-  xlab("") +
-  ggtitle("Transcript length") +
-  guides(fill="none") +
-  theme(axis.text.x = element_text(angle = 45, hjust=1))
-
-if (nrow(res.min$data.summary) > 0){
-  p6.min.1 <- ggplot(res.min$data.summary, aes(x=match_type, y=length, fill=match_type)) +
-    geom_boxplot(alpha=1, outlier.shape = NA) +
-    mytheme +
-    scale_fill_manual(values=myPalette, name='Stats') +
-    scale_y_continuous(limits = quantile(res.min$data.summary$length, c(0.1, 0.9))) +
-    ylab("Transcript length (bp)") +
-    xlab("") +
-    ggtitle("Transcript length") +
-    guides(fill="none")
-  
-  p6.min.2 <- ggplot(res.min$data.summary, aes(x=sim_match_type, y=length, fill=sim_match_type)) +
-    geom_boxplot(alpha=1, outlier.shape = NA) +
-    mytheme +
-    scale_fill_manual(values=myPalette, name='Stats') +
-    scale_y_continuous(limits = quantile(res.min$data.summary$length, c(0.1, 0.9))) +
-    ylab("Transcript length (bp)") +
-    xlab("") +
-    ggtitle("Transcript length") +
-    guides(fill="none") +
-    theme(axis.text.x = element_text(angle = 45, hjust=1))
-}
-
-
-# PLOT 7: Expression level
-p7.1 <- ggplot(res.full$data.summary, aes(x=match_type, y=sim_counts, fill=match_type)) +
-  geom_boxplot(alpha=1, outlier.shape = NA) +
-  mytheme +
-  scale_fill_manual(values=myPalette, name='Stats') +
-  scale_y_continuous(limits = quantile(res.full$data.summary$sim_counts, c(0.1, 0.9))) +
-  ylab("Number of simulated reads") +
-  xlab("") +
-  ggtitle("Expression level") +
-  guides(fill="none")
-
-p7.2 <- ggplot(res.full$data.summary, aes(x=sim_match_type, y=sim_counts, fill=sim_match_type)) +
-  geom_boxplot(alpha=1, outlier.shape = NA) +
-  mytheme +
-  scale_fill_manual(values=myPalette, name='Stats') +
-  scale_y_continuous(limits = quantile(res.full$data.summary$sim_counts, c(0.1, 0.9))) +
-  ylab("Number of simulated reads") +
-  xlab("") +
-  ggtitle("Expression level") +
-  guides(fill="none") +
-  theme(axis.text.x = element_text(angle = 45, hjust=1))
-
-if (nrow(res.min$data.summary) > 0){
-  p7.min.1 <- ggplot(res.min$data.summary, aes(x=match_type, y=sim_counts, fill=match_type)) +
-    geom_boxplot(alpha=1, outlier.shape = NA) +
-    mytheme +
-    scale_fill_manual(values=myPalette, name='Stats') +
-    scale_y_continuous(limits = quantile(res.min$data.summary$sim_counts, c(0.1, 0.9))) +
-    ylab("Number of simulated reads") +
-    xlab("") +
-    ggtitle("Expression level") +
-    guides(fill="none")
-  
-  p7.min.2 <- ggplot(res.min$data.summary, aes(x=sim_match_type, y=sim_counts, fill=sim_match_type)) +
-    geom_boxplot(alpha=1, outlier.shape = NA) +
-    mytheme +
-    scale_fill_manual(values=myPalette, name='Stats') +
-    scale_y_continuous(limits = quantile(res.min$data.summary$sim_counts, c(0.1, 0.9))) +
-    ylab("Number of simulated reads") +
-    xlab("") +
-    ggtitle("Expression level") +
-    guides(fill="none") +
-    theme(axis.text.x = element_text(angle = 45, hjust=1))
-}
-
-
-# PLOT 8: Transcripts per gene
+# PLOT 6: Isoform complexity (transcripts per gene)
 trans.per.gene <- res.full$data.summary %>%
   group_by(gene_id) %>%
   summarise(trans_per_gene=n())
 res.full$data.summary <- merge(res.full$data.summary, trans.per.gene, by = "gene_id")
 
-p8.1 <- ggplot(res.full$data.summary, aes(x=match_type, y=trans_per_gene, fill=match_type)) +
-  geom_boxplot(alpha=1, outlier.shape = NA) +
+p6 <- ggplot(res.full$data.summary[res.full$data.summary$structural_category %in% colnames(res.full$sqantisim.stats[,res.full$sqantisim.stats["Total",] > 0]) ,], aes(x=structural_category, y=trans_per_gene, fill=structural_category, alpha=match_type)) +
+  geom_boxplot(outlier.shape = NA, position = position_dodge(0.8), color = "#656565", width = 0.5) +
+  scale_fill_manual(values = cat.palette, name = "Structural category", guide = "none") +
+  scale_alpha_manual(values=c("TP" = 1, "FN" = 0.5), name="Pipeline performance") +
+  theme_classic() +
   mytheme +
-  scale_fill_manual(values=myPalette, name='Stats') +
-  scale_y_continuous(limits = quantile(res.full$data.summary$trans_per_gene, c(0.1, 0.9))) +
-  ylab("Number of transcripts per gene") +
-  xlab("") +
-  ggtitle("Isoform complexity") +
-  guides(fill="none")
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  ylab("Transcriptss per gene") +
+  coord_cartesian(ylim = c(quantile(res.full$data.summary$trans_per_gene, probs = c(0.01, 0.99)))) + 
+  theme(axis.title.x = element_blank(),
+        axis.title.y  = element_text(size=16),
+        axis.text.x = element_blank()) +
+  theme(plot.subtitle = element_text(hjust = 0.5),
+        plot.title.position = "plot") +
+  theme(legend.position = "bottom") +
+  guides(alpha = guide_legend(override.aes = list(linetype = 0, fill = "darkgrey"))) +
+  ggtitle("Isoform complexity by structural category")
 
-p8.2 <- ggplot(res.full$data.summary, aes(x=sim_match_type, y=trans_per_gene, fill=sim_match_type)) +
-  geom_boxplot(alpha=1, outlier.shape = NA) +
+# PLOT 7: Canonical Junctions
+p7 <- data.class[data.class$pipeline_performance == "FP" & !is.na(data.class$all_canonical), ] %>% 
+  ggplot(aes(1, alpha = all_canonical, fill = structural_category)) +
+  geom_bar(aes(y = ..count..), position = "fill") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  scale_fill_manual(values = cat.palette, name = "Structural category") +
+  scale_alpha_manual(values = c(0, 1), guide = "none") +
+  coord_flip() +
+  theme_classic() +
   mytheme +
-  scale_fill_manual(values=myPalette, name='Stats') +
-  scale_y_continuous(limits = quantile(res.full$data.summary$trans_per_gene, c(0.1, 0.9))) +
-  ylab("Number of transcripts per gene") +
-  xlab("") +
-  ggtitle("Isoform complexity") +
-  guides(fill="none") +
-  theme(axis.text.x = element_text(angle = 45, hjust=1))
+  theme(axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.title.x = element_blank(),
+        axis.ticks.y = element_blank(),
+        legend.position = "bottom") +
+  ggtitle("FP with non-canonical splice junctions")
 
-if (nrow(res.min$data.summary) > 0){
-  trans.per.gene <- res.min$data.summary %>%
-    group_by(gene_id) %>%
-    summarise(trans_per_gene=n())
-  res.min$data.summary <- merge(res.min$data.summary, trans.per.gene, by = "gene_id")
-  
-  p8.min.1 <- ggplot(res.min$data.summary, aes(x=match_type, y=trans_per_gene, fill=match_type)) +
-    geom_boxplot(alpha=1, outlier.shape = NA) +
-    mytheme +
-    scale_fill_manual(values=myPalette, name='Stats') +
-    scale_y_continuous(limits = quantile(res.min$data.summary$trans_per_gene, c(0.1, 0.9))) +
-    ylab("Number of transcripts per gene") +
-    xlab("") +
-    ggtitle("Isoform complexity") +
-    guides(fill="none")
-  
-  p8.min.2 <- ggplot(res.min$data.summary, aes(x=sim_match_type, y=trans_per_gene, fill=sim_match_type)) +
-    geom_boxplot(alpha=1, outlier.shape = NA) +
-    mytheme +
-    scale_fill_manual(values=myPalette, name='Stats') +
-    scale_y_continuous(limits = quantile(res.min$data.summary$trans_per_gene, c(0.1, 0.9))) +
-    ylab("Number of transcripts per gene") +
-    xlab("") +
-    ggtitle("Isoform complexity") +
-    guides(fill="none") +
-    theme(axis.text.x = element_text(angle = 45, hjust=1))
-}
-
-
-if ('within_CAGE_peak' %in% colnames(data.index)){
-  # PLOT 9: within cage peak
-  data.query$match_type <- 'FP'
-  data.query$match_type[which(data.query$isoform %in% res.full$novel.perfect.matches$isoform)] <- 'TP_novel'
-  data.query$match_type[which(data.query$isoform %in% res.full$known.perfect.matches$isoform)] <- 'TP_known'
-  p9.known_FN <- data.index[which(data.index$transcript_id %in% res.full$data.summary$transcript_id[which(res.full$data.summary$sim_match_type == "FN_known")]),]
-  if (nrow(p9.known_FN) > 0){
-    p9.known_FN$match_type <- 'FN_known'
-  } else {
-    p9.known_FN$match_type <- character()
-  }
-  
-  p9.novel_FN <- data.index[which(data.index$transcript_id %in% res.full$data.summary$transcript_id[which(res.full$data.summary$sim_match_type == "FN_novel")]),]
-  if (nrow(p9.novel_FN) > 0){
-    p9.novel_FN$match_type <- 'FN_novel'
-  } else {
-    p9.novel_FN$match_type <- character()
-  }
-  p9.all <- rbind(data.query[,c('structural_category', 'match_type', 'within_CAGE_peak', 'dist_to_CAGE_peak')],
-                  p9.known_FN[,c('structural_category', 'match_type', 'within_CAGE_peak', 'dist_to_CAGE_peak')],
-                  p9.novel_FN[,c('structural_category', 'match_type', 'within_CAGE_peak', 'dist_to_CAGE_peak')])
-  
-  p9 <- p9.all[which(!is.na(p9.all$within_CAGE_peak)),] %>%
-    group_by(match_type, within_CAGE_peak) %>%
-    summarise(value=n()) %>%
-    ggplot(aes(x=match_type)) +
-    geom_bar(aes(y=value, fill=within_CAGE_peak), position="fill", stat="identity") +
-    scale_fill_manual(values=myPalette[1:2], name='CagePeak') +
-    mytheme +
-    ylab('Percentage %') +
-    xlab('') +
-    ggtitle('Within CAGE peak') +
-    theme(axis.text.x = element_text(angle = 45, margin=ggplot2::margin(17,0,0,0), size=10))
-  
-  # PLOT 10: distance to cage peak
-  p10 <- p9.all[which(!is.na(p9.all$dist_to_CAGE_peak)),] %>%
-    ggplot(aes(x=dist_to_CAGE_peak, color=match_type, fill=match_type)) +
-    geom_density(alpha=.3) +
-    scale_color_manual(values = myPalette) +
-    scale_fill_manual(values = myPalette) +
-    mytheme +
-    ylab('Distance to CAGE peak') +
-    xlab('') +
-    ggtitle('Distance To Cage Peak') +
-    theme(axis.text.x = element_text(angle = 45, margin=ggplot2::margin(17,0,0,0), size=10))
-}
-
+# PLOT 8: Short-read coverage (min SJ cov)
 if ('min_cov' %in% colnames(data.index)) {
-  # PLOT 11: min SJ cov by short reads
-  data.query$match_type <- 'FP'
-  data.query$match_type[which(data.query$isoform %in% res.full$novel.perfect.matches$isoform)] <- 'TP_novel'
-  data.query$match_type[which(data.query$isoform %in% res.full$known.perfect.matches$isoform)] <- 'TP_known'
-  p11.known_FN <- data.index[which(data.index$transcript_id %in% res.full$data.summary$transcript_id[which(res.full$data.summary$sim_match_type == "FN_known")]),]
-  if (nrow(p11.known_FN) > 0){
-    p11.known_FN$match_type <- 'FN_known'
-  } else {
-    p11.known_FN$match_type <- character()
-  }
-  p11.novel_FN <- data.index[which(data.index$transcript_id %in% res.full$data.summary$transcript_id[which(res.full$data.summary$sim_match_type == "FN_novel")]),]
-  
-  if (nrow(p11.novel_FN) > 0){
-    p11.novel_FN$match_type <- 'FN_novel'
-  } else {
-    p11.novel_FN$match_type <- character()
-  }
-  
-  p11.all <- rbind(data.query[,c('structural_category', 'match_type', 'min_cov')],
-                  p11.known_FN[,c('structural_category', 'match_type', 'min_cov')],
-                  p11.novel_FN[,c('structural_category', 'match_type', 'min_cov')])
-  p11.all$Coverage_SJ <- 'False'
-  p11.all[which(p11.all$min_cov>0), 'Coverage_SJ'] <- 'True'
-  
-  p11 <- p11.all[which(!is.na(p11.all$Coverage_SJ)),] %>%
-    group_by(match_type, Coverage_SJ) %>%
-    summarise(value=n()) %>%
-    ggplot(aes(x=match_type)) +
-    geom_bar(aes(y=value, fill=Coverage_SJ), position="fill", stat="identity") +
-    scale_fill_manual(values=myPalette, name='Coverage SJ') +
+  dataTPFNFP$min_cov[is.na(dataTPFNFP$min_cov)] <- 0
+  dataTPFNFP <- dataTPFNFP %>%
+    mutate(SJ_cov = ifelse(min_cov >= 1, "True", "False")) %>%
+    mutate(structural_category2 = ifelse(structural_category %in% as.character(unique(data.index$structural_category)), as.character(structural_category), "Other\nSCs")) %>% 
+    na.omit()
+  p8A <- ggplot(dataTPFNFP[dataTPFNFP$structural_category2 == "FSM",], aes(x = pipeline_performance, y = (..count..), fill = structural_category, alpha=SJ_cov)) +
+    geom_bar(position = "stack") +
+    facet_grid(. ~ structural_category) +
+    scale_alpha_manual(values = c(0.5, 1), name = "Pipeline performance", labels = c("Not supported", "SR support")) +
+    scale_fill_manual(values = cat.palette, guide = "none") +
+    theme_classic() +
     mytheme +
-    ylab('Percentage %') +
-    xlab('') +
-    ggtitle('Splice Junctions Short Reads Coverage') +
-    theme(axis.text.x = element_text(angle = 45, margin=ggplot2::margin(17,0,0,0), size=10))
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+          axis.title = element_blank()) +
+    theme(axis.title.x = element_blank(),
+          axis.title.y = element_blank())
+  
+  p8B <- ggplot(dataTPFNFP[dataTPFNFP$structural_category2 != "FSM",], aes(x = pipeline_performance, y = (..count..), fill = structural_category, alpha=SJ_cov)) +
+    geom_bar(position = "stack") +
+    facet_grid(. ~ structural_category) +
+    scale_alpha_manual(values = c(0.5, 1), name = "Pipeline performance", labels = c("Not supported", "SR support")) +
+    scale_fill_manual(values = cat.palette, guide = "none") +
+    theme_classic() +
+    mytheme +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+          axis.title = element_blank()) +
+    theme(axis.title.x = element_blank(),
+          axis.title.y = element_blank())
+  
+  p8 <- annotate_figure(
+    ggarrange(p8A, p8B, ncol = 2, align = "h", widths = c(1.5, length(unique(dataTPFNFP$structural_category)) - 1), common.legend = T, legend = "bottom"),
+    top = "Transcripts supported by short reads"
+  )
 }
 
-if ('ratio_TSS' %in% colnames(data.index)) {
-  data.query$match_type <- 'FP'
-  data.query$match_type[which(data.query$isoform %in% res.full$novel.perfect.matches$isoform)] <- 'TP_novel'
-  data.query$match_type[which(data.query$isoform %in% res.full$known.perfect.matches$isoform)] <- 'TP_known'
-  p12.known_FN <- data.index[which(data.index$transcript_id %in% res.full$data.summary$transcript_id[which(res.full$data.summary$sim_match_type == "FN_known")]),]
-  if (nrow(p12.known_FN) > 0){
-    p12.known_FN$match_type <- 'FN_known'
-  } else {
-    p12.known_FN$match_type <- character()
-  }
-  p12.novel_FN <- data.index[which(data.index$transcript_id %in% res.full$data.summary$transcript_id[which(res.full$data.summary$sim_match_type == "FN_novel")]),]
-  
-  if (nrow(p12.novel_FN) > 0){
-    p12.novel_FN$match_type <- 'FN_novel'
-  } else {
-    p12.novel_FN$match_type <- character()
-  }
-  # PLOT 12: ratio TSS
-  p12.all <- rbind(data.query[,c('structural_category', 'match_type', 'ratio_TSS')],
-                  p12.known_FN[,c('structural_category', 'match_type', 'ratio_TSS')],
-                  p12.novel_FN[,c('structural_category', 'match_type', 'ratio_TSS')])
-  
-  p12 <- p12.all[which(!is.na(p12.all$ratio_TSS)),] %>%
-    ggplot(aes(x=log(ratio_TSS), color=match_type, fill=match_type)) +
-    geom_density(alpha=.3) +
-    scale_color_manual(values = myPalette) +
-    scale_fill_manual(values = myPalette) +
+# PLOT 9: CAGE support
+if ('within_CAGE_peak' %in% colnames(data.index)){
+  dataTPFNFP$within_CAGE_peak <- ifelse(dataTPFNFP$within_CAGE_peak == T | dataTPFNFP$within_CAGE_peak == "True", "True", "False")
+  p9A <- ggplot(dataTPFNFP[dataTPFNFP$structural_category2 == "FSM",], aes(x = pipeline_performance, y = (..count..), fill = structural_category, alpha=within_CAGE_peak)) +
+    geom_bar(position = "stack") +
+    facet_grid(. ~ structural_category) +
+    scale_alpha_manual(values = c(0.5, 1), name = "Pipeline performance", labels = c("Not supported", "SR support")) +
+    scale_fill_manual(values = cat.palette, guide = "none") +
+    theme_classic() +
     mytheme +
-    ylab('log TSS ratio') +
-    xlab('') +
-    ggtitle('Ratio TSS') +
-    theme(axis.text.x = element_text(angle = 45, margin=ggplot2::margin(17,0,0,0), size=10))
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+          axis.title = element_blank()) +
+    theme(axis.title.x = element_blank(),
+          axis.title.y = element_blank())
+  
+  p9B <- ggplot(dataTPFNFP[dataTPFNFP$structural_category2 != "FSM",], aes(x = pipeline_performance, y = (..count..), fill = structural_category, alpha=within_CAGE_peak)) +
+    geom_bar(position = "stack") +
+    facet_grid(. ~ structural_category) +
+    scale_alpha_manual(values = c(0.5, 1), name = "Pipeline performance", labels = c("Not supported", "CAGE support")) +
+    scale_fill_manual(values = cat.palette, guide = "none") +
+    theme_classic() +
+    mytheme +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+          axis.title = element_blank()) +
+    theme(axis.title.x = element_blank(),
+          axis.title.y = element_blank())
+  
+  p9 <- annotate_figure(
+    ggarrange(p9A, p9B, ncol = 2, align = "h", widths = c(1.5, length(unique(dataTPFNFP$structural_category)) - 1), common.legend = T,  legend = "bottom"),
+    top = "Transcripts supported by CAGE peaks"
+  )
 }
 
-# Quantification descriptors
-if (quant.file != "none"){
-  quantification <- read.table(quant.file, header = F, sep="\t")
-  colnames(quantification) <- c("transcript_id", "predicted_counts")
-  #quantification <- merge(quantification, modif.index, by.x = "transcript_id", by.y = "pipeline_performance", all.x = T)
-  quantification <- merge(quantification, modif.index, by.x = "transcript_id", by.y = "pipeline_performance")
-  quantification$sim_counts[is.na(quantification$sim_counts)] <- 0
-  quantification <- quantification[,c("transcript_id", "predicted_counts", "sim_counts")]
-  
-  #RMSE(RMSD)
-  rmse <- sqrt(mean((quantification$sim_counts - quantification$predicted_counts)^2))
-  
-  #MAPE
-  mape <- mean(abs((quantification$sim_counts-quantification$predicted_counts)/quantification$sim_counts)) * 100
-
-  #Q-Q plot
-  nq <- 500
-  p <- (1:nq)/nq -0.5/nq
-  p13 <- ggplot() +
-    geom_point(aes(x=quantile(log(quantification$sim_counts), p), y=quantile(log(quantification$predicted_counts), p)), color = "#15918A") +
-    geom_abline(slope=1, intercept=0, color="#F58A53") +
-    annotate(geom = 'text', label = paste0("RMSE = ", round(rmse,3), "\nMAPE = ", round(mape, 3), "%"), x = -Inf, y = Inf, hjust = -0.1, vjust = 1) +
+# PLOT 10: SR and CAGE
+if ('min_cov' %in% colnames(data.index) & 'within_CAGE_peak' %in% colnames(data.index)) {
+  dataTPFNFP$supp <- paste(dataTPFNFP$SJ_cov, dataTPFNFP$within_CAGE_peak, sep = "_")
+  dataTPFNFP$supp <- ifelse(dataTPFNFP$supp == "True_True", "True", "False")
+  dataTPFNFP$supp <- factor(dataTPFNFP$supp,
+                           levels = c("False", "True"),
+                           labels = c("Not fully\nsupported", "SR+CAGE\nsupport"))
+  p10A <- ggplot(dataTPFNFP[dataTPFNFP$structural_category2 == "FSM",], aes(x = pipeline_performance, y = (..count..), fill = structural_category, alpha=supp)) +
+    geom_bar(position = "stack") +
+    facet_grid(. ~ structural_category) +
+    scale_alpha_manual(values = c(0.5, 1), name = "Pipeline performance", labels = c("Not supported", "SR + CAGE support")) +
+    scale_fill_manual(values = cat.palette, guide = "none") +
+    theme_classic() +
     mytheme +
-    xlab("Simulated log counts") +
-    ylab("Predicted log counts") +
-    ggtitle("Q-Q plot of TP count levels")
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+          axis.title = element_blank()) +
+    theme(axis.title.x = element_blank(),
+          axis.title.y = element_blank())
+  
+  p10B <- ggplot(dataTPFNFP[dataTPFNFP$structural_category2 != "FSM",], aes(x = pipeline_performance, y = (..count..), fill = structural_category, alpha=supp)) +
+    geom_bar(position = "stack") +
+    facet_grid(. ~ structural_category) +
+    scale_alpha_manual(values = c(0.5, 1), name = "Pipeline performance", labels = c("Not supported", "SR support")) +
+    scale_fill_manual(values = cat.palette, guide = "none") +
+    theme_classic() +
+    mytheme +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+          axis.title = element_blank()) +
+    theme(axis.title.x = element_blank(),
+          axis.title.y = element_blank())
+  
+  p10 <- annotate_figure(
+    ggarrange(p10A, p10B, ncol = 2, align = "h", widths = c(1.5, length(unique(dataTPFNFP$structural_category)) - 1), common.legend = T,  legend = "bottom"),
+    top = "Transcripts supported by short reads and CAGE peaks"
+  )
 }
 
 # PLOT X: Radar chart

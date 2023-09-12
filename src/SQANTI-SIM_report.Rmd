@@ -1,6 +1,5 @@
 ---
-title: "SQANTI-SIM OUTPUT COMPARISON REPORT"
-author: "`r paste0('  ','Author', ': ',Sys.getenv('USERNAME'))`"
+title: "SQANTI-SIM EVALUATION REPORT"
 date: "`r paste0('  ','Date', ': ', format(Sys.time(), '%d %B %Y'))`"
 output:
   html_document:
@@ -11,69 +10,145 @@ output:
     theme: spacelab
 ---
 
-<!-- Basic setting -->
+<!-- Knitr settings -->
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(message = FALSE, warning = FALSE, cache = FALSE, echo = FALSE)
 ```
 
+<!-- CSS settings -->
+
+```{css, echo=FALSE}
+.title {
+  color: #D31336;
+}
+
+h2 {
+  color: #3A5A81;
+  padding-top: 40px;
+}
+
+h4 {
+  font-size: 18px;
+  font-style: italic;
+}
+```
+
+
 <!-- Report generation -->
 
-## Summary
+## Summary {.tabset}
 
-```{r, results='asis'}
-n.sim.trans <- nrow(res.full$data.summary)
-n.known.trans <- nrow(res.full$data.summary[which(res.full$data.summary$sim_type == "known"),])
-n.novel.trans <- nrow(res.full$data.summary[which(res.full$data.summary$sim_type == "novel"),])
-n.class.trans <- nrow(data.query)
-
-cat('\n\n**Number of simulated transcripts**: ', n.sim.trans, '\n\n')
-cat('\n\n**Number of known transcripts**: ', n.known.trans, '\n\n')
-cat('\n\n**Number of novel transcripts**: ', n.novel.trans, '\n\n')
-cat('\n\n**Number of reconstructed transcripts**: ', n.class.trans, '\n\n')
-```
-
-## Simulated counts distribution
+### Overview
 
 ```{r}
-p1
+x <- data.frame(
+  "Simulated" = c(res.gene["Total"],
+                  nrow(data.index),
+                  sum(data.index$structural_category == "FSM"),
+                  sum(data.index$structural_category != "FSM")),
+  
+  "Reconstructed" = c(res.gene["TP"] + res.gene["FP"],
+                      nrow(data.class),
+                      sum(data.class$structural_category == "FSM"),
+                      sum(data.class$structural_category != "FSM"))
+)
+
+rownames(x) <- c("Unique genes",
+                 "Unique isoforms",
+                 "Known transcripts",
+                 "Novel transcripts")
+
+datatable(
+  x,
+  options = list(dom = 't'),
+  caption = htmltools::tags$caption(
+    style = 'caption-side: bottom; text-align: center;','Table 1: ',
+    htmltools::em('Simulated and reconstructed transcriptome summary.'))
+  )
 ```
 
-## Isoform classification distribution of reconstructed transcripts
+### Isoform classification
 
 ```{r}
-p2
+x <- data.frame(
+  "Simulated" = c(sum(data.index$structural_category == "FSM"),
+                  sum(data.index$structural_category == "ISM"),
+                  sum(data.index$structural_category == "NIC"),
+                  sum(data.index$structural_category == "NNC"),
+                  sum(data.index$structural_category == "Genic\nGenomic"),
+                  sum(data.index$structural_category == "Antisense"),
+                  sum(data.index$structural_category == "Fusion"),
+                  sum(data.index$structural_category == "Intergenic"),
+                  sum(data.index$structural_category == "Genic\nIntron")),
+  
+  "Reconstructed" = c(sum(data.class$structural_category == "FSM"),
+                  sum(data.class$structural_category == "ISM"),
+                  sum(data.class$structural_category == "NIC"),
+                  sum(data.class$structural_category == "NNC"),
+                  sum(data.class$structural_category == "Genic\nGenomic"),
+                  sum(data.class$structural_category == "Antisense"),
+                  sum(data.class$structural_category == "Fusion"),
+                  sum(data.class$structural_category == "Intergenic"),
+                  sum(data.class$structural_category == "Genic\nIntron"))
+)
+
+rownames(x) <- c("FSM",
+                 "ISM", "NIC", "NNC",
+                 "Genic Genomic", "Antisense", "Fusion",
+                 "Intergenic", "Genic Intron")
+
+datatable(
+  x,
+  options = list(dom = 't'),
+  caption = htmltools::tags$caption(
+    style = 'caption-side: bottom; text-align: center;','Table 2: ',
+    htmltools::em('Structural classification of simulated and reconstructed transcripts.'))
+  )
 ```
 
-## Evaluation of simulation 
 
-Simulated transcript were grouped in know simulated transcripts which appear in the reference annotation GTF and novel simulated transcripts that were deleted from the annotation. The following metrics were computed:
 
-- **Number of isoforms simulated**: Total number of simulated isoforms
-- **True Positive isoforms (TP)**: Isoforms that match junctions with a simulated transcript and its TSS and TTS is within the 50bp threshold
-- **Partial True Positive isoforms (PTP)**: Isoforms that match junctions but the TSS and TTS are beyond the threshold
-- **False Negative isoforms (FN) **: Isoforms that were simulated but not detected
-- **False Positive (FP)**: Transcript that were detected but not simulated
-- **Sensitivity**: TP/Number of simulated transcripts
-- **Precision**: TP/Detected isoforms
-- **F-score**: Harmonic mean of precision and sensitivity
-- **False Discovery Rate**: (FP+PTP)/Detected isoforms
-- **Positive Detection Rate**: (TP + PTP)/Number of simulated transcripts
-- **False Detection Rate**: FP/Detected isoforms
 
-## Performance metrics
+## Performance metrics {.tabset}
 
-### Full results
+Simulated transcripts were categorized into known simulated transcripts (FSM), which are present in the reference annotation GTF, and novel simulated transcripts that were excluded from the annotation by SQANTI-SIM. The following metrics were computed:
+
+- **Number of simulated isoforms**: Total number of simulated isoforms.
+- **True Positive isoforms (TP)**: Isoforms that match junctions with a simulated transcript, and both their TSS and TTS fall within the 50bp threshold.
+- **Partial True Positive isoforms (PTP)**: Isoforms that match junctions, but either the TSS or TTS is beyond the threshold.
+- **False Negative isoforms (FN)**: Isoforms that were simulated but not detected.
+- **False Positive isoforms (FP)**: Transcripts that were detected but were not part of the simulated set.
+- **Sensitivity**: TP / Number of simulated transcripts.
+- **Precision**: TP / Detected isoforms.
+- **F-score**: The harmonic mean of precision and sensitivity.
+- **False Discovery Rate**: (FP + PTP) / Detected isoforms.
+- **Positive Detection Rate**: (TP + PTP) / (TP + FN).
+- **False Detection Rate**: FP / (TP + PTP + FP).
+
+### Tables {.tabset .tabset-dropdown}
+
+#### Full results
 
 ```{r}
 t1
 ```
 
-### Above min. supp. results
+#### Above min. supp. results
 
 ```{r}
 t2
 ```
+
+### Plots {.tabset .tabset-dropdown}
+
+#### Compact
+
+```{r}
+p2
+```
+
+#### Radar chart
 
 ```{r, results = 'hide'}
 radar.palette <- c("Known"="#750037", "Novel"='#052240', "FSM"="#6BAED6", "ISM"="#FC8D59", "NIC"="#78C679", 
@@ -82,6 +157,7 @@ radar.palette <- c("Known"="#750037", "Novel"='#052240', "FSM"="#6BAED6", "ISM"=
 
 sqantisim.stats <- rbind(res.full$sqantisim.stats, res.min$sqantisim.stats)[c("Sensitivity", "Precision", "F-score", "Positive_Detection_Rate", "Sensitivity1"),]
 rownames(sqantisim.stats) <- c("Sn", "Pr", "F-score", "PDR", "Sn(min.supp.)")
+sqantisim.stats <- sqantisim.stats[, colnames(res.full$sqantisim.stats[,res.full$sqantisim.stats["Total",] > 0])]
 sqantisim.stats <- sqantisim.stats[c("F-score", "Sn", "Sn(min.supp.)", "Pr", "PDR"), which(!is.na(sqantisim.stats["F-score",]))]
 sqantisim.stats.t <- as.data.frame(t(as.matrix(sqantisim.stats)))
 sqantisim.stats.t[is.na(sqantisim.stats.t)] <- NA
@@ -106,7 +182,6 @@ for (i in 1:n){
 n <- length(rownames(sqantisim.stats.t)[rownames(sqantisim.stats.t) %in% c("1", "2", "Known", "Novel")])
 par(mar=c(1,1,1,1), mfrow=c(2,ceiling(n/2)))
 for (i in (1+n-2):(nrow(sqantisim.stats.t)-2)){
-  print(i)
   radarchart(
   sqantisim.stats.t[c(1, 2, i+2),], axistype = 1,
   pcol = radar.palette[[rownames(sqantisim.stats.t)[i+2]]], pfcol = scales::alpha(radar.palette[[rownames(sqantisim.stats.t)[i+2]]], 0.5), plwd = 2, plty = 1,
@@ -121,84 +196,61 @@ for (i in (1+n-2):(nrow(sqantisim.stats.t)-2)){
 }
 ```
 
-### Plots full results {.tabset}
+## Isoform characterization {.tabset}
 
-#### Mono- or multi-exon
+### Isoform distribution
+
+```{r}
+p1
+```
+
+### Simulated reads
 
 ```{r}
 p3
 ```
 
-#### Canonical Junctions
+### Number of exons
 
 ```{r}
 p4
 ```
 
-#### Number of exons
+### Transcript length
 
 ```{r}
-grid.arrange(p5.1, p5.2, ncol = 2, nrow = 1)
+p5
 ```
 
-#### Transcript length
+### Isoform complexity
 
 ```{r}
-grid.arrange(p6.1, p6.2, ncol = 2, nrow = 1)
+p6
 ```
 
-#### Expression level
+### Splice junctions
 
 ```{r}
-grid.arrange(p7.1, p7.2, ncol = 2, nrow = 1)
+p7
 ```
-
-#### Isoform complexity
-
-```{r}
-grid.arrange(p8.1, p8.2, ncol = 2, nrow = 1)
-```
-
 
 ```{r, results='asis'}
-if ('within_cage_peak' %in% colnames(data.index)){
-  cat('\n\n#### CAGE Peak Support\n\n')
-  print(p9)
-  print(p10)
+if ('min_cov' %in% colnames(data.index) | 'within_CAGE_peak' %in% colnames(data.index)){
+  cat('\n\n## Orthogonal data support {.tabset}\n\n')
 }
 
 if ('min_cov' %in% colnames(data.index)){
-  cat('\n\n#### Splice Junction Coverage\n\n')
-  print(p11)
+  cat('\n\n### Short reads\n\n')
+  print(p8)
 }
 
-if ('ratio_TSS' %in% colnames(data.index)){
-  cat('\n\n#### TSS ratio\n\n')
-  print(p12)
+if ('within_CAGE_peak' %in% colnames(data.index)){
+  cat('\n\n### CAGE peaks\n\n')
+  print(p9)
+}
+
+if ('min_cov' %in% colnames(data.index) & 'within_CAGE_peak' %in% colnames(data.index)) {
+  cat('\n\n### Short reads + CAGE peaks\n\n')
+  print(p10)
 }
 ```
-```{r, results='asis'}
-if (nrow(res.min$data.summary) > 0){
-  cat('\n\n### Plots above min. supp. results {.tabset}\n\n')
-  cat('\n\n#### Mono- or multi-exon\n\n')
-  print(p3.min)
-  
-  cat('\n\n#### Number of exons\n\n')
-  print(grid.arrange(p5.min.1, p5.min.2, ncol = 2, nrow = 1))
-  
-  cat('\n\n#### Transcript length\n\n')
-  print(grid.arrange(p6.min.1, p6.min.2, ncol = 2, nrow = 1))
-  
-  cat('\n\n#### Expression level\n\n')
-  print(grid.arrange(p7.min.1, p7.min.2, ncol = 2, nrow = 1))
-  
-  cat('\n\n#### Isoform complexity\n\n')
-  print(grid.arrange(p8.min.1, p8.min.2, ncol = 2, nrow = 1))
-}
-
-if (quant.file != "none"){
-  cat('\n\n### Evaluation of quantification\n\n')
-  print(p13)
-}
-```
-

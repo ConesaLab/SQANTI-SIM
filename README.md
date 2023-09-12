@@ -26,11 +26,11 @@ Please refer to [Wiki](https://github.com/ConesaLab/SQANTI-SIM/wiki) for how to 
 
 ## Change Log
 
-Current version (25/07/2023): **0.2.0**
+Current version (22/08/2023): **0.2.0**
 
 Updates, patches and releases:
 
-### Version 0.2.0 (25/07/2023)
+### Version 0.2.0 (22/08/2023)
 
 #### :rocket: New Features and Major Changes
 
@@ -40,6 +40,7 @@ Updates, patches and releases:
 - Provided pre-trained models and characterized datasets of the WTC11 human cell line.
 - Updated pre-trained NanoSim models with WTC11 human cell line dRNA and cDNA data. Additionally, users have the option to utilize their specific pre-trained NanoSim models using the `--nanosim_model` parameter.
 - Enhanced the `--diff_exp` parameter by deprecating `--low_prob` and `--high_prob`. Now, `--diff_exp` is a numeric value that allows users to adjust with a single parameter the bias of known and novel expression levels.
+- Updated SQANTI-SIM evaluation report style.
 
 #### :bug: Bug Fixes and Minor Changes
 
@@ -61,4 +62,4 @@ Updates, patches and releases:
 
 ## How to cite SQANTI-SIM
 
-SQANTI-SIM paper in progress
+The SQANTI-SIM paper is currently in progress. Meanwhile, you can access the preprint [here](https://www.biorxiv.org/content/10.1101/2023.08.23.554392v1).

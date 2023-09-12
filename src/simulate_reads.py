@@ -8,6 +8,7 @@ Illumina (Polyester) and CAGE-seq
 Author: Jorge Mestre Tomas (jorge.mestre.tomas@csic.es)
 """
 
+import readline
 import numpy
 import os
 import pandas
@@ -112,6 +113,10 @@ def pbsim_simulation(args):
     else:
         create_transcript_file(index_file = args.trans_index, fasta_file= tmp_dir + "/normal_transcriptome.fa", output_file=os.path.join(tmp_dir, "sample.transcript"), long_count=args.long_count)
 
+    # PBSIM3 error model
+    if not args.pbsim_model:
+        args.pbsim_model = pbsim + "/data/QSHMM-RSII.model"
+
     # PBSIM3 simulation
     print("[SQANTI-SIM] Simulating PacBio reads with PBSIM3")
 
@@ -120,7 +125,7 @@ def pbsim_simulation(args):
             "pbsim",
             "--strategy", "trans",
             "--method", "qshmm",
-            "--qshmm", pbsim + "/data/QSHMM-RSII.model",
+            "--qshmm", args.pbsim_model,
             "--transcript", tmp_dir + "/sample.transcript",
             "--accuracy-mean", "0.95",
             "--seed", str(args.seed)
@@ -149,7 +154,7 @@ def pbsim_simulation(args):
             "pbsim",
             "--strategy", "trans",
             "--method", "qshmm",
-            "--qshmm", pbsim + "/data/QSHMM-RSII.model",
+            "--qshmm", args.pbsim_model,
             "--transcript", tmp_dir + "/sample.transcript",
             "--accuracy-mean", "0.95",
             "--pass-num", str(args.pass_num),
@@ -278,6 +283,13 @@ def isoseqsim_simulation(args):
     else:
         os.makedirs(args.dir)
 
+    # IsoSeqSim pre-trained model
+    isoseqsim_error = [0.01731, 0.01090, 0.02204] # subst, del, ins
+    if args.isoseqsim_model:
+        f_iso_error = open(args.isoseqsim_model, "r")
+        isoseqsim_error = readline(f_iso_error).split("\t")
+
+
     # PacBio Sequel simulation -> error rates from IsoSeqSim GitHub
     print("[SQANTI-SIM] Simulating PacBio reads with IsoSeqSim")
     src_dir = os.path.dirname(os.path.realpath(__file__))
@@ -300,11 +312,11 @@ def isoseqsim_simulation(args):
         "-t",
         os.path.join(args.dir, "IsoSeqSim_simulated.tsv"),
         "--es",
-        "0.01731",
+        str(isoseqsim_error[0]),
         "--ed",
-        "0.01090",
+        str(isoseqsim_error[1]),
         "--ei",
-        "0.02204",
+        str(isoseqsim_error[2]),
         "-n",
         str(args.long_count),
         "-m",

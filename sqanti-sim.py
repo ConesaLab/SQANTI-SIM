@@ -309,6 +309,8 @@ def sim(input: list):
     parser.add_argument("--long_count", type=int, default=None, help="\t\tNumber of long reads to simulate (if not given it will use the requested_counts from the --trans_index file)", )
     parser.add_argument("--short_count", type=int, default=None, help="\t\tNumber of short reads to simulate (if not given it will use the requested_counts from the --trans_index file)", )
     parser.add_argument("--nanosim_model", type=str, default=None, help="\t\tDirectory of the pre-trained NanoSim model")
+    parser.add_argument("--pbsim_model", type=str, default=None, help="\t\tPBSIM3 quality score pre-trained model.")
+    parser.add_argument("--isoseqsim_model", type=str, default=None, help="\t\tOne-line tab-separated file with substitution, deletion and insertion error.")
     parser.add_argument("--CAGE_model", type=str, default=None, help="\t\tDirectory of the pre-trained CAGE model")
     parser.add_argument("--falseCAGE_prop", type=float, default=0.2, help="\t\tProportion (0, 1) of simulated CAGE peaks that are not derived from actual TSS locations (default: 0.2)")
     parser.add_argument("-s", "--seed", type=int, default=None, help="\t\tRandomizer seed", )
