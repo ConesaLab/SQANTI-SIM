@@ -90,7 +90,7 @@ def get_bam_header(bam):
 def get_TSS_bed(corrected_gtf, chr_order):
     # This code is taken from the original SQANTI3 QC
     limit_info = dict(gff_type=["transcript"])
-    out_directory=os.path.dirname(corrected_gtf)
+    out_directory=os.path.dirname(os.path.realpath(corrected_gtf))
     tmp_in= out_directory + "/coverage_inside_TSS.bed_tmp"
     tmp_out = out_directory + "/coverage_outside_TSS.bed_tmp"
     in_handle=open(corrected_gtf)
@@ -178,7 +178,7 @@ def get_TSS_cov(gtf, bam_files, chr_order):
     """
 
     # Define the limit information for GFF parsing and open GTF
-    out_directory=os.path.dirname(gtf)
+    out_directory=os.path.dirname(os.path.realpath(gtf))
     tmp_bed= out_directory + "/TSS_cov.bed_tmp"
     limit_info = dict(gff_type=["transcript"])
 

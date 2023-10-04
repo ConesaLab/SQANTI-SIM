@@ -73,8 +73,11 @@ def target_trans(f_idx: str, f_idx_out: str, counts: dict) -> tuple:
         random.shuffle(trans_by_SC[SC])
 
     while categories:
-        SC = random.choices(categories, weights=weight_list, k=1)
-        SC = SC[0]
+        if len(categories) > 1:
+            SC = random.choices(categories, weights=weight_list, k=1)
+            SC = SC[0]
+        else:
+            SC = categories[0]
         if counts[SC] <= 0 or len(trans_by_SC[SC]) == 0:
             i = categories.index(SC)
             del categories[i]
