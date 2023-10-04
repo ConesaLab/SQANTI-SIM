@@ -141,8 +141,8 @@ def pbsim_simulation(args):
         os.rename("sd.fastq", os.path.join(tmp_dir, "sd.fastq"))
         os.rename("sd.maf", os.path.join(tmp_dir, "sd.maf"))
         maf_file = os.path.join(tmp_dir, "sd.maf")
-        pbsm_fasta = os.path.join(args.dir, "PBSIM_simulated.fasta")
-        read_to_iso = os.path.join(args.dir, "PBSIM_simulated.read_to_isoform.tsv")
+        pbsm_fasta = os.path.join(args.dir, "PBSIM3_simulated.fasta")
+        read_to_iso = os.path.join(args.dir, "PBSIM3_simulated.read_to_isoform.tsv")
 
         # Remove unaligned reads from the MAF file
         print("[SQANTI-SIM] Creating read_to_isoform file")

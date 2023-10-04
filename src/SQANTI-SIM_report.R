@@ -66,7 +66,7 @@ isoform_level_metrics <- function(data.query, data.index, MAX_TSS_TTS_DIFF, min_
   # Matches between simulated and reconstructed transcripts:
   # First all splice-junctions must be identical
   # Second, difference between the annotated and reconstructed TSS and TTS must be smaller than MAX_TSS_TTS_DIFF
-  matches <- inner_join(data.query, idx, by=c('junctions', 'chrom')) %>%
+  matches <- inner_join(data.query, idx, by=c('junctions', 'chrom'), relationship = "many-to-many") %>%
     mutate(diffTSS = abs(TSS_genomic_coord.x - TSS_genomic_coord.y), diffTTS = abs(TTS_genomic_coord.x - TTS_genomic_coord.y), difftot = diffTSS+diffTTS) %>%
     arrange(difftot) %>%
     distinct(isoform, .keep_all = T)
@@ -311,10 +311,6 @@ res.min <- isoform_level_metrics(data.query, data.index, MAX_TSS_TTS_DIFF, min.s
 res.min$sqantisim.stats <- res.min$sqantisim.stats[c("Total", "TP", "FN", "Sensitivity"),]
 res.min[is.na(res.min)] <-  0
 
-
-res.gene <- gene_level_metrics(data.query, data.index, MAX_TSS_TTS_DIFF)
-
-
 modif.index <- modify_index_file(index.file, res.full, output_directory)
 index_file_name <- basename(index.file)
 modif_index_path <- file.path(output_directory, paste0(substr(index_file_name, 1, nchar(index_file_name) - 4), ".eval.tsv"))
@@ -327,8 +323,19 @@ res.full$data.summary$match_type <- factor(res.full$data.summary$match_type, lev
 res.min$data.summary$match_type[which(res.min$data.summary$match_type == "PTP")] <- "FN"
 res.min$data.summary$match_type <- factor(res.min$data.summary$match_type, levels = c("TP", "FN"))
 
-data.index <- data.index[data.index[,"sim_counts"] > 0, 
-                         c("transcript_id", "gene_id", "structural_category", "exons", "length", "sim_type", "sim_counts", "pipeline_performance", "within_CAGE_peak", "min_cov")]
+data.index <- merge(x = data.index, y = modif.index[,c("transcript_id", "pipeline_performance")], by = "transcript_id", all.x = TRUE)
+
+res.gene <- gene_level_metrics(data.query, data.index, MAX_TSS_TTS_DIFF)
+
+sel <- c("transcript_id", "gene_id", "structural_category", "exons", "length", "sim_type", "sim_counts", "pipeline_performance")
+if ("within_CAGE_peak" %in% colnames(data.index)) {
+  sel <- c(sel, "within_CAGE_peak")
+}
+if ("min_cov" %in% colnames(data.index)) {
+  sel <- c(sel, "min_cov")
+} 
+
+data.index <- data.index[data.index[,"sim_counts"] > 0, sel]
 data.index$pipeline_performance <- as.character(data.index$pipeline_performance)
 
 data.class$pipeline_performance <- ifelse(data.class$isoform %in% data.index$pipeline_performance, "TP", "FP")
@@ -392,8 +399,8 @@ cat.palette = c("Known"="#6BAED6", "FSM"="#6BAED6", "ISM"="#FC8D59", "NIC"="#78C
                 "Intergenic" = "darksalmon", "Genic\nIntron"="#41B6C4")
 
 mytheme <- theme_classic(base_family = "Helvetica") +
-  theme(axis.line.x = element_line(color="black", size = 0.4),
-        axis.line.y = element_line(color="black", size = 0.4)) +
+  theme(axis.line.x = element_line(color="black", linewidth = 0.4),
+        axis.line.y = element_line(color="black", linewidth = 0.4)) +
   theme(axis.title.x = element_text(size=13),
         axis.text.x  = element_text(size=12),
         axis.title.y = element_text(size=13),
@@ -471,7 +478,7 @@ p1A <- data.index[data.index$sim_counts >= 1, ] %>%
 
 p1B <- data.class %>%
   ggplot(aes(x=structural_category)) +
-  geom_bar(aes(y = (..count..)/sum(..count..)*100, fill=structural_category, alpha = pipeline_performance), color="black", size=0.3, width=0.7) +
+  geom_bar(aes(y = (..count..)/sum(..count..)*100, fill=structural_category, alpha = pipeline_performance), color="black", linewidth=0.3, width=0.7) +
   scale_x_discrete(drop=FALSE) + 
   scale_alpha_manual(values = c(0.2, 1), name = "Trancript model calls") +
   mytheme +
@@ -503,7 +510,7 @@ p2 <- cbind(data.frame(Gene = c(res.gene["Sensitivity"], res.gene["Precision"], 
   scale_color_manual(values = c("#15918A", "#F58A53", "#FDC659"), name="", labels = c("F1-score", "Precision", "Sensitivity")) +
   ylim(c(0,1)) +
   coord_flip() +
-  theme(panel.grid.major.y = element_line(color = "grey", size = 0.5, linetype = 2)) +
+  theme(panel.grid.major.y = element_line(color = "grey", linewidth = 0.5, linetype = 2)) +
   theme(legend.position="top") + 
   theme(panel.spacing = unit(2, "lines")) +
   theme(axis.title.x = element_blank(), 
