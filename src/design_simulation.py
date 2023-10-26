@@ -69,7 +69,7 @@ def target_trans(f_idx: str, f_idx_out: str, counts: dict) -> tuple:
     categories = list(counts.keys())
     weight_list = []
     for SC in categories:
-        weight_list.append(len(trans_by_SC[SC]))
+        weight_list.append(len(trans_by_SC[SC])+1)
         random.shuffle(trans_by_SC[SC])
 
     while categories:
