@@ -456,55 +456,58 @@ def create_expr_file_sample(f_idx: str, args: list):
             print("[SQANTI-SIM] ERROR: The specified file %s does not exist. Please provide the correct file name or ensure that the file exists in the specified directory." %(args.expr_file), file=sys.stderr)
             sys.exit(1)
 
-    elif args.long_reads:
-        # Extract fasta transcripts
-        ref_t = os.path.splitext(args.gtf)[0] + ".transcripts.fa"
-        if os.path.exists(ref_t):
-            print("[SQANTI-SIM] WARNING: %s already exists. Overwritting!" %(ref_t), file=sys.stderr)
+    elif args.long_reads or args.mapped_reads:
+        if args.long_reads:
+            # Extract fasta transcripts
+            ref_t = os.path.splitext(args.gtf)[0] + ".transcripts.fa"
+            if os.path.exists(ref_t):
+                print("[SQANTI-SIM] WARNING: %s already exists. Overwritting!" %(ref_t), file=sys.stderr)
 
-        cmd = ["gffread", "-w", str(ref_t), "-g", str(args.genome), str(args.gtf)]
-        cmd = " ".join(cmd)
-        sys.stdout.flush()
-        if subprocess.check_call(cmd, shell=True) != 0:
-            print("[SQANTI-SIM] ERROR running gffread: {0}".format(cmd), file=sys.stderr)
-            sys.exit(1)
+            cmd = ["gffread", "-w", str(ref_t), "-g", str(args.genome), str(args.gtf)]
+            cmd = " ".join(cmd)
+            sys.stdout.flush()
+            if subprocess.check_call(cmd, shell=True) != 0:
+                print("[SQANTI-SIM] ERROR running gffread: {0}".format(cmd), file=sys.stderr)
+                sys.exit(1)
 
-        if args.pb:
-            sam_file = os.path.join(args.dir, (os.path.splitext(os.path.basename(args.long_reads))[0] + "_sqanti-sim_align.sam"))
-            cmd = [
-                "minimap2",
-                ref_t,
-                args.long_reads,
-                "-x",
-                "map-pb",
-                "-a",
-                "--secondary=no",
-                "-o",
-                sam_file,
-                "-t",
-                str(args.cores),
-            ]
-        elif args.ont:
-            sam_file = os.path.join(args.dir, (os.path.splitext(os.path.basename(args.long_reads))[0] + "_sqanti-sim_align.sam"))
-            cmd = [
-                "minimap2",
-                ref_t,
-                args.long_reads,
-                "-x",
-                "map-ont",
-                "-a",
-                "--secondary=no",
-                "-o",
-                sam_file,
-                "-t",
-                str(args.cores),
-            ]
+            if args.pb:
+                sam_file = os.path.join(args.dir, (os.path.splitext(os.path.basename(args.long_reads))[0] + "_sqanti-sim_align.sam"))
+                cmd = [
+                    "minimap2",
+                    ref_t,
+                    args.long_reads,
+                    "-x",
+                    "map-hifi",
+                    "-a",
+                    "--secondary=no",
+                    "-o",
+                    sam_file,
+                    "-t",
+                    str(args.cores),
+                ]
+            elif args.ont:
+                sam_file = os.path.join(args.dir, (os.path.splitext(os.path.basename(args.long_reads))[0] + "_sqanti-sim_align.sam"))
+                cmd = [
+                    "minimap2",
+                    ref_t,
+                    args.long_reads,
+                    "-x",
+                    "map-ont",
+                    "-a",
+                    "--secondary=no",
+                    "-o",
+                    sam_file,
+                    "-t",
+                    str(args.cores),
+                ]
 
-        cmd = " ".join(cmd)
-        sys.stdout.flush()
-        if subprocess.check_call(cmd, shell=True) != 0:
-            print("[SQANTI-SIM] ERROR running minimap2: {0}".format(cmd), file=sys.stderr)
-            sys.exit(1)
+            cmd = " ".join(cmd)
+            sys.stdout.flush()
+            if subprocess.check_call(cmd, shell=True) != 0:
+                print("[SQANTI-SIM] ERROR running minimap2: {0}".format(cmd), file=sys.stderr)
+                sys.exit(1)
+        else:
+            sam_file = args.mapped_reads
 
         # Raw counts -> Count only primary alignments
         trans_counts = defaultdict(lambda: 0)
