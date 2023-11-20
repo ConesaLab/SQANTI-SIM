@@ -130,6 +130,7 @@ def design(input: list):
     parser_s.add_argument("--genome", type=str, required=True, help="\t\tReference genome FASTA", )
     group1 = parser_s.add_mutually_exclusive_group()
     group1.add_argument("--expr_file", type=str, default=str(), help="\t\tA 3-column tab-separated file containing (i) gene name, (ii) transcript name and (iii) transcript read count", )
+    group1.add_argument("--mapped_reads", type=str, default=str(), help="\t\tInput mapped long reads for characterization in SAM format", )
     group1.add_argument("--long_reads", type=str, default=str(), help="\t\tInput long reads for characterization in FASTA or FASTQ format", )
     group2 = parser_s.add_mutually_exclusive_group()
     group2.add_argument("--pb", action="store_true", help="\t\tIf used the program will use PacBio settings", )
