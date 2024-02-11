@@ -42,7 +42,7 @@ Please refer to [Wiki](https://github.com/ConesaLab/SQANTI-SIM/wiki) for how to 
 
 ## Change Log
 
-Current version (04/10/2023): **0.2.1**
+Current version (11/02/2024): **0.2.2**
 
 Updates, patches and releases:
 
@@ -50,4 +50,6 @@ Updates, patches and releases:
 
 ## How to cite SQANTI-SIM
 
-The SQANTI-SIM paper is currently in progress. Meanwhile, you can access the preprint [here](https://www.biorxiv.org/content/10.1101/2023.08.23.554392v1).
+Please cite the following [publication](https://doi.org/10.1186/s13059-023-03127-0) if you're using SQANTI-SIM in your research:
+
+- Mestre-Tomás, J., Liu, T., Pardo-Palacios, F., & Conesa, A. (2023). SQANTI-SIM: a simulator of controlled transcript novelty for lrRNA-seq benchmark. *Genome Biology, 24*(1), 286. https://doi.org/10.1186/s13059-023-03127-0
