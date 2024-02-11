@@ -115,16 +115,19 @@ datatable(
 Simulated transcripts were categorized into known simulated transcripts (FSM), which are present in the reference annotation GTF, and novel simulated transcripts that were excluded from the annotation by SQANTI-SIM. The following metrics were computed:
 
 - **Number of simulated isoforms**: Total number of simulated isoforms.
-- **True Positive isoforms (TP)**: Isoforms that match junctions with a simulated transcript, and both their TSS and TTS fall within the 50bp threshold.
+- **True Positive isoforms (TP)**: Isoforms that match junctions with a simulated transcript, and both their TSS and TTS fall within the 50bp threshold without redundant simulated transcripts.
+- **Transcripts associated to TP (redundant TP)**: Isoforms that match with simulated transcripts, allowing redundancy (multiple isoforms associated with the same simulated transcript).
 - **Partial True Positive isoforms (PTP)**: Isoforms that match junctions, but either the TSS or TTS is beyond the threshold.
 - **False Negative isoforms (FN)**: Isoforms that were simulated but not detected.
 - **False Positive isoforms (FP)**: Transcripts that were detected but were not part of the simulated set.
 - **Sensitivity**: TP / Number of simulated transcripts.
 - **Precision**: TP / Detected isoforms.
+- **Redundant Precision**: Redundant TP / Detected isoforms.
 - **F-score**: The harmonic mean of precision and sensitivity.
+- **Positive Detection Rate**: (TP + PTP) / Number of simulated transcripts.
 - **False Discovery Rate**: (FP + PTP) / Detected isoforms.
-- **Positive Detection Rate**: (TP + PTP) / (TP + FN).
-- **False Detection Rate**: FP / (TP + PTP + FP).
+- **False Detection Rate**: FP / Detected isoforms.
+- **Redundancy**: The proportion of redundant isoforms, (Redundant TP - TP) / Redundant TP.
 
 ### Tables {.tabset .tabset-dropdown}
 
@@ -155,10 +158,10 @@ radar.palette <- c("Known"="#750037", "Novel"='#052240', "FSM"="#6BAED6", "ISM"=
                 "NNC"="#EE6A50", "Genic\nGenomic"="#969696", "Antisense"="#66C2A4", "Fusion"="goldenrod1",
                 "Intergenic" = "darksalmon", "Genic\nIntron"="#41B6C4")
 
-sqantisim.stats <- rbind(res.full$sqantisim.stats, res.min$sqantisim.stats)[c("Sensitivity", "Precision", "F-score", "Positive_Detection_Rate", "Sensitivity1"),]
-rownames(sqantisim.stats) <- c("Sn", "Pr", "F-score", "PDR", "Sn(min.supp.)")
+sqantisim.stats <- rbind(res.full$sqantisim.stats, res.min$sqantisim.stats)[c("F-score", "Precision", "Redundant_Precision", "Sensitivity", "Sensitivity1", "Positive_Detection_Rate"),]
+rownames(sqantisim.stats) <- c("F-score", "Pr", "Red. Pr", "Sn", "Sn(min.supp.)", "PDR")
 sqantisim.stats <- sqantisim.stats[, colnames(res.full$sqantisim.stats[,res.full$sqantisim.stats["Total",] > 0])]
-sqantisim.stats <- sqantisim.stats[c("F-score", "Sn", "Sn(min.supp.)", "Pr", "PDR"), which(!is.na(sqantisim.stats["F-score",]))]
+sqantisim.stats <- sqantisim.stats[c("F-score", "Pr", "Red. Pr", "Sn", "Sn(min.supp.)", "PDR"), which(!is.na(sqantisim.stats["F-score",]))]
 sqantisim.stats.t <- as.data.frame(t(as.matrix(sqantisim.stats)))
 sqantisim.stats.t[is.na(sqantisim.stats.t)] <- NA
 sqantisim.stats.t <- rbind(1, 0, sqantisim.stats.t)

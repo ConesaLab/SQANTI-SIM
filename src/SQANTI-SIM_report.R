@@ -42,12 +42,17 @@ gene_level_metrics <- function(data.query, data.index, MAX_TSS_TTS_DIFF){
   sensitivity <- TP/(TP + FN)
   precision <- TP/(TP+FP)
   
-  gene.metrics <- c("Total" = (TP + FN), "TP" = TP, "PTP" = PTP,
+  row.order <- c('', '', 'Transcripts_associated_to_TP', 'PTP', 'FP', 'FN',  'Sensitivity', 'Precision', 'Redundant_Precision', 'F-score', 'False_Discovery_Rate', 'Positive_Detection_Rate', 'False_Detection_Rate', 'Redundancy')
+  
+  
+  gene.metrics <- c("Total" = (TP + FN), "TP" = TP, "Transcripts_associated_to_TP" = NA, "PTP" = PTP,
                     "FP" = FP, "FN" = FN, "Sensitivity" = sensitivity, "Precision" = precision, 
+                    "Redundant_Precision" = NA,
                     "F-score" = (2*(precision*sensitivity)/(precision+sensitivity)),
                     "False_Discovery_Rate" = (FP + PTP) / (FP + PTP +  TP),
                     "Positive_Detection_Rate" = (TP + PTP) / (TP + FN),
-                    "False_Detection_Rate" = (FP) / (FP + PTP + TP))
+                    "False_Detection_Rate" = (FP) / (FP + PTP + TP),
+                    "Redundancy" = NA)
   
   return(gene.metrics)
 }
@@ -127,95 +132,120 @@ isoform_level_metrics <- function(data.query, data.index, MAX_TSS_TTS_DIFF, min_
     
     if (sc == 'FSM') {
       n.sim <- nrow(data.known)
-      TP <- sum(data.summary$match_type == "TP" & data.summary$sim_type == "known")
+      TP <- length(unique(data.summary[data.summary$match_type == "TP" & data.summary$sim_type == "known", "transcript_id"]))
+      redundantTP <- sum(data.summary$match_type == "TP" & data.summary$sim_type == "known")
       PTP <- sum(data.summary$match_type == "PTP" & data.summary$sim_type == "known")
       FN <- sum(data.summary$match_type == "FN" & data.summary$sim_type == "known") + PTP
       FP <- sum(!(data.query$isoform %in% data.summary$isoform) & data.query$structural_category == "FSM")
+      n.reconstructed <- redundantTP + FP
     } else {
       n.sim <- nrow(data.novel[which(data.novel$structural_category == sc),])
-      TP <- sum(data.summary$match_type == "TP" & data.summary$sim_type == "novel" & data.summary$structural_category == sc)
+      TP <- length(unique(data.summary[data.summary$match_type == "TP" & data.summary$sim_type == "novel" & data.summary$structural_category == sc, "transcript_id"]))
+      redundantTP <- sum(data.summary$match_type == "TP" & data.summary$sim_type == "novel" & data.summary$structural_category == sc)
       PTP <- sum(data.summary$match_type == "PTP" & data.summary$sim_type == "novel" & data.summary$structural_category == sc)
       FN <- sum(data.summary$match_type == "FN" & data.summary$sim_type == "novel" & data.summary$structural_category == sc) + PTP
       FP <- sum(!(data.query$isoform %in% data.summary$isoform) & data.query$structural_category == sc)
+      nrTP <- length(unique(data.summary[data.summary$match_type == "TP" & data.summary$sim_type == "novel" & data.summary$structural_category == sc, "transcript_id"]))
+      n.reconstructed <- redundantTP + FP
     }
     #FN <- n.sim - TP
     
     if (sum(n.sim, TP, PTP, FP, FN) > 0){
       sqantisim.stats['Total', sc] <- n.sim
       sqantisim.stats['TP', sc] <- TP
+      sqantisim.stats['Transcripts_associated_to_TP', sc] <- redundantTP
       sqantisim.stats['PTP', sc] <- PTP
       sqantisim.stats['FP', sc] <- FP
       sqantisim.stats['FN', sc] <- FN
-      sqantisim.stats['Sensitivity', sc] <- TP/ (TP + FN)
-      sqantisim.stats['Precision', sc] <- TP/ (TP + FP)
+      sqantisim.stats['Sensitivity', sc] <- TP / n.sim
+      sqantisim.stats['Precision', sc] <- TP / n.reconstructed
+      sqantisim.stats['Redundant_Precision', sc] <- redundantTP / n.reconstructed
       sqantisim.stats['F-score', sc] <- 2*((sqantisim.stats['Sensitivity', sc]*sqantisim.stats['Precision', sc])/(sqantisim.stats['Sensitivity', sc]+sqantisim.stats['Precision', sc]))
-      sqantisim.stats['False_Discovery_Rate', sc] <- (FP) / (FP +  TP)
-      sqantisim.stats['Positive_Detection_Rate', sc] <- (TP + PTP) / (TP + FN)
-      sqantisim.stats['False_Detection_Rate', sc] <- (FP) / (FP + PTP + TP)
+      sqantisim.stats['False_Discovery_Rate', sc] <- (FP + PTP) / n.reconstructed
+      sqantisim.stats['Positive_Detection_Rate', sc] <- (TP + PTP) / n.sim
+      sqantisim.stats['False_Detection_Rate', sc] <- (FP) / n.reconstructed
+      sqantisim.stats['Redundancy', sc] <- (redundantTP - TP) / redundantTP
     } else {
       sqantisim.stats['Total', sc] <- 0
       sqantisim.stats['TP', sc] <- 0
+      sqantisim.stats['Transcripts_associated_to_TP', sc] <- 0
       sqantisim.stats['PTP', sc] <- 0
       sqantisim.stats['FP', sc] <- 0
       sqantisim.stats['FN', sc] <- 0
-      sqantisim.stats['Sensitivity', sc] <- 0
-      sqantisim.stats['Precision', sc] <- 0
-      sqantisim.stats['F-score', sc] <- 0
-      sqantisim.stats['False_Discovery_Rate', sc] <- 0
-      sqantisim.stats['Positive_Detection_Rate', sc] <- 0
-      sqantisim.stats['False_Detection_Rate', sc] <- 0 
+      sqantisim.stats['Sensitivity', sc] <- NA
+      sqantisim.stats['Precision', sc] <- NA
+      sqantisim.stats['Redundant_Precision', sc] <- NA
+      sqantisim.stats['F-score', sc] <- NA
+      sqantisim.stats['False_Discovery_Rate', sc] <- NA
+      sqantisim.stats['Positive_Detection_Rate', sc] <- NA
+      sqantisim.stats['False_Detection_Rate', sc] <- NA
+      sqantisim.stats['Redundancy', sc] <- NA
     }
   }
   
   known.TP <- 0
+  known.redundantTP <- 0
   known.PTP <- 0
-  known.FN <- 0
   known.FP <- 0
+  known.FN <- 0
   novel.TP <- 0
+  novel.redundantTP <- 0
   novel.PTP <- 0
-  novel.FN <- 0 
   novel.FP <- 0
+  novel.FN <- 0
   total.FP <- 0
   for (sc in colnames(sqantisim.stats)){
     if (sc == "FSM"){
       known.TP <- known.TP + sqantisim.stats['TP', sc]
+      known.redundantTP <- known.redundantTP + sqantisim.stats['Transcripts_associated_to_TP', sc]
       known.PTP <- known.PTP + sqantisim.stats['PTP', sc]
-      known.FN <- known.FN + sqantisim.stats['FN', sc]
       known.FP <- known.FP + sqantisim.stats['FP', sc]
+      known.FN <- known.FN + sqantisim.stats['FN', sc]
     }else{
       novel.TP <- novel.TP + sqantisim.stats['TP', sc]
+      novel.redundantTP <- novel.redundantTP + sqantisim.stats['Transcripts_associated_to_TP', sc]
       novel.PTP <- novel.PTP + sqantisim.stats['PTP', sc]
-      novel.FN <- novel.FN + sqantisim.stats['FN', sc]
       novel.FP <- novel.FP + sqantisim.stats['FP', sc]
+      novel.FN <- novel.FN + sqantisim.stats['FN', sc]
     }
   }
+  known.sim <- known.TP + known.FN
+  known.reconstructed <- known.redundantTP + known.FP
+  novel.sim <- novel.TP + novel.FN
+  novel.reconstructed <- novel.redundantTP + novel.FP
   
   sqantisim.stats['Total', 'Known'] <-  nrow(data.known)
   sqantisim.stats['TP', 'Known'] <- known.TP
+  sqantisim.stats['Transcripts_associated_to_TP', 'Known'] <- known.redundantTP
   sqantisim.stats['PTP', 'Known'] <- known.PTP
   sqantisim.stats['FP', 'Known'] <- known.FP
   sqantisim.stats['FN', 'Known'] <- known.FN
-  sqantisim.stats['Precision', 'Known'] <- known.TP / (known.TP + known.FP)
-  sqantisim.stats['Sensitivity', 'Known'] <- known.TP / (known.TP + known.FN)
+  sqantisim.stats['Sensitivity', 'Known'] <- known.TP / known.sim
+  sqantisim.stats['Precision', 'Known'] <- known.TP / known.reconstructed
+  sqantisim.stats['Redundant_Precision', 'Known'] <- known.redundantTP / known.reconstructed
   sqantisim.stats['F-score', 'Known'] <- 2*((sqantisim.stats['Sensitivity', 'Known']*sqantisim.stats['Precision', 'Known'])/(sqantisim.stats['Sensitivity', 'Known']+sqantisim.stats['Precision', 'Known']))
-  sqantisim.stats['False_Discovery_Rate', 'Known'] <- (known.FP) / (known.FP +  known.TP)
-  sqantisim.stats['Positive_Detection_Rate', 'Known'] <- (known.TP + known.PTP) / (known.TP + known.FN)
-  sqantisim.stats['False_Detection_Rate', 'Known'] <- (known.FP) / (known.FP + known.PTP +  known.TP)
+  sqantisim.stats['False_Discovery_Rate', 'Known'] <- (known.FP + known.PTP) / known.reconstructed
+  sqantisim.stats['Positive_Detection_Rate', 'Known'] <- (known.TP + known.PTP) / known.sim
+  sqantisim.stats['False_Detection_Rate', 'Known'] <- (known.FP) / known.reconstructed
+  sqantisim.stats['Redundancy', 'Known'] <- (known.redundantTP - known.TP) / known.redundantTP
   
   sqantisim.stats['Total', 'Novel'] <-  nrow(data.novel)
   sqantisim.stats['TP', 'Novel'] <- novel.TP
+  sqantisim.stats['Transcripts_associated_to_TP', 'Novel'] <- novel.redundantTP
   sqantisim.stats['PTP', 'Novel'] <- novel.PTP
   sqantisim.stats['FP', 'Novel'] <- novel.FP
   sqantisim.stats['FN', 'Novel'] <- novel.FN
-  sqantisim.stats['Precision', 'Novel'] <- novel.TP / (novel.TP + novel.FP)
-  sqantisim.stats['Sensitivity', 'Novel'] <- novel.TP / (novel.TP + novel.FN)
+  sqantisim.stats['Sensitivity', 'Novel'] <- novel.TP / novel.sim
+  sqantisim.stats['Precision', 'Novel'] <- novel.TP / novel.reconstructed
+  sqantisim.stats['Redundant_Precision', 'Novel'] <- novel.redundantTP / novel.reconstructed
   sqantisim.stats['F-score', 'Novel'] <- 2*((sqantisim.stats['Sensitivity', 'Novel']*sqantisim.stats['Precision', 'Novel'])/(sqantisim.stats['Sensitivity', 'Novel']+sqantisim.stats['Precision', 'Novel']))
-  sqantisim.stats['False_Discovery_Rate', 'Novel'] <- (novel.FP) / (novel.FP +  novel.TP)
-  sqantisim.stats['Positive_Detection_Rate', 'Novel'] <- (novel.TP + novel.PTP) / (novel.TP + novel.FN)
-  sqantisim.stats['False_Detection_Rate', 'Novel'] <- (novel.FP) / (novel.FP + novel.PTP +  novel.TP)
+  sqantisim.stats['False_Discovery_Rate', 'Novel'] <- (novel.FP + novel.PTP) / novel.reconstructed
+  sqantisim.stats['Positive_Detection_Rate', 'Novel'] <- (novel.TP + novel.PTP) / novel.sim
+  sqantisim.stats['False_Detection_Rate', 'Novel'] <- (novel.FP) / novel.reconstructed
+  sqantisim.stats['Redundancy', 'Novel'] <- (novel.redundantTP - novel.TP) / novel.redundantTP
   
   col.order <- c("Known", "Novel", "FSM", "ISM", "NIC", "NNC", "Genic\nGenomic",  "Antisense", "Fusion","Intergenic", "Genic\nIntron")
-  row.order <- c('Total', 'TP', 'PTP', 'FP', 'FN', 'Sensitivity', 'Precision', 'F-score', 'False_Discovery_Rate', 'Positive_Detection_Rate', 'False_Detection_Rate')
+  row.order <- c('Total', 'TP', 'Transcripts_associated_to_TP', 'PTP', 'FP', 'FN',  'Sensitivity', 'Precision', 'Redundant_Precision', 'F-score', 'Positive_Detection_Rate','False_Discovery_Rate', 'False_Detection_Rate', 'Redundancy')
   sqantisim.stats <- sqantisim.stats[intersect(row.order, rownames(sqantisim.stats)), intersect(col.order, colnames(sqantisim.stats))]
   
   res <- list(data.summary, known.perfect.matches, novel.perfect.matches, sqantisim.stats)
@@ -225,9 +255,11 @@ isoform_level_metrics <- function(data.query, data.index, MAX_TSS_TTS_DIFF, min_
 
 modify_index_file <- function(index.file, res.full, output_directory){
   modif.index <- read.table(index.file, header=T, as.is=T, sep="\t")
-  n <- colnames(modif.index)
-  modif.index <- merge(x = modif.index, y = res.full$data.summary[,c("transcript_id", "isoform")], by = "transcript_id", all.x = TRUE)
-  colnames(modif.index) <- c(n, "pipeline_performance")
+  modif.index <- merge(x = modif.index, y = res.full$data.summary[,c("transcript_id", "isoform")], by = "transcript_id", all.x = TRUE) %>%
+    group_by_at(vars(1:17)) %>%
+    summarise(pipeline_performance = paste(unique(isoform), collapse = ",")) %>%
+    mutate(pipeline_performance = na_if(pipeline_performance, "NA")) %>% 
+    as.data.frame()
   modif.index$pipeline_performance[is.na(modif.index$pipeline_performance)] <- "FN"
   modif.index$pipeline_performance[which(modif.index$sim_counts <= 0)] <-  "absent"
   #modif.index$pipeline_performance[which(modif.index$transcript_id %in% res.full$data.summary$transcript_id[which(res.full$data.summary$match_type == "PTP")])] <- "PTP"
@@ -303,7 +335,7 @@ data.index$acceptors <- NULL
 data.index$sim_type[which(data.index$sim_counts == 0)] <- 'absent' # Ignore not simulated
 
 # -------------------- Performance metrics
-# Matched for novel and known
+# Isoform level performance
 MAX_TSS_TTS_DIFF = 50
 res.full <- isoform_level_metrics(data.query, data.index, MAX_TSS_TTS_DIFF)
 res.full[is.na(res.full)] <-  0
@@ -311,6 +343,7 @@ res.min <- isoform_level_metrics(data.query, data.index, MAX_TSS_TTS_DIFF, min.s
 res.min$sqantisim.stats <- res.min$sqantisim.stats[c("Total", "TP", "FN", "Sensitivity"),]
 res.min[is.na(res.min)] <-  0
 
+# Add pipeline performance to index file
 modif.index <- modify_index_file(index.file, res.full, output_directory)
 index_file_name <- basename(index.file)
 modif_index_path <- file.path(output_directory, paste0(substr(index_file_name, 1, nchar(index_file_name) - 4), ".eval.tsv"))
@@ -325,6 +358,7 @@ res.min$data.summary$match_type <- factor(res.min$data.summary$match_type, level
 
 data.index <- merge(x = data.index, y = modif.index[,c("transcript_id", "pipeline_performance")], by = "transcript_id", all.x = TRUE)
 
+# Gene level performance
 res.gene <- gene_level_metrics(data.query, data.index, MAX_TSS_TTS_DIFF)
 
 sel <- c("transcript_id", "gene_id", "structural_category", "exons", "length", "sim_type", "sim_counts", "pipeline_performance")
@@ -446,7 +480,7 @@ t1 <- DT::datatable(cbind("Genes"=res.gene, res.full$sqantisim.stats),
                     caption = htmltools::tags$caption(
                       style = 'caption-side: bottom; text-align: center;','Table 3: ',
                       htmltools::em('SQANTI-SIM evaluation of transcriptome reconstruction.'))) %>%
-  formatRound(c("Genes", colnames(res.full$sqantisim.stats)), digits = 3, rows=c(6:11), zero.print = 0)
+  formatRound(c("Genes", colnames(res.full$sqantisim.stats)), digits = 3, rows=c(7:14), zero.print = 0)
 write.table(cbind("Genes"=res.gene, res.full$sqantisim.stats), file = paste(output_directory, 'SQANTI-SIM_metrics.tsv', sep = "/"), quote = F, sep = "\t", na = "NA",row.names = F, col.names = c("Genes", gsub("\n", "_", colnames(res.full$sqantisim.stats))))
 
 # TABLE 2: SQANTI-SIM metrics above min_supp
