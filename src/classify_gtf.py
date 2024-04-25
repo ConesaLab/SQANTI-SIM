@@ -27,11 +27,10 @@ except ImportError:
     sys.exit(-1)
 
 try:
-    from cupcake.tofu.compare_junctions import compare_junctions
+    from src.SQANTI3.utilities.cupcake.tofu.compare_junctions import compare_junctions
 except ImportError:
     print("Unable to import cupcake.tofu! Please make sure you install cupcake.", file=sys.stderr)
     sys.exit(-1)
-
 
 utilitiesPath = os.path.join(os.path.dirname(os.path.realpath(__file__)), "SQANTI3/utilities")
 GTF2GENEPRED_PROG = os.path.join(utilitiesPath, "gtfToGenePred")
@@ -123,11 +122,10 @@ class myQueryTranscripts:
 
     def __init__(self, id, gene_id, tss_diff, tts_diff, num_exons, length,
                  str_class, subtype=None, genes=None, transcripts=None,
-                 chrom=None, strand=None, refLen="NA",refExons="NA",
+                 chrom=None, strand=None, refLen="NA", refExons="NA",
                  refStart="NA", refEnd="NA", q_splicesite_hit=0,
-                 q_exon_overlap=0,junctions=None, tss=None, tts=None,
+                 q_exon_overlap=0, junctions=None, tss=None, tts=None,
                  intergenic_assoc=None):
-
         self.id = id
         self.gene_id = gene_id  # gene where this transcript cames from
         self.tss_diff = tss_diff  # distance to TSS of best matching ref
@@ -187,10 +185,10 @@ def gtf_parser(gtf_name: str) -> defaultdict:
 
     # run gtf to genePred
     cmd = (
-        GTF2GENEPRED_PROG
-        + " {0} {1} -genePredExt -allErrors -ignoreGroupsWithoutExons".format(
-            gtf_name, queryFile
-        )
+            GTF2GENEPRED_PROG
+            + " {0} {1} -genePredExt -allErrors -ignoreGroupsWithoutExons".format(
+        gtf_name, queryFile
+    )
     )
     sys.stdout.flush()
     if subprocess.check_call(cmd, shell=True) != 0:
@@ -302,7 +300,8 @@ def transcript_classification(trans_by_region: list) -> dict:
     return dict(res)
 
 
-def transcriptsKnownSpliceSites(trec: genePredRecord, ref_chr: list, start_ends_by_gene: dict, min_ref_len: int) -> myQueryTranscripts:
+def transcriptsKnownSpliceSites(trec: genePredRecord, ref_chr: list, start_ends_by_gene: dict,
+                                min_ref_len: int) -> myQueryTranscripts:
     """Find best reference hit for the query transcript
 
     Checks for full-splice-match, incomplete-splice-match, anyKnownJunction,
@@ -401,7 +400,7 @@ def transcriptsKnownSpliceSites(trec: genePredRecord, ref_chr: list, start_ends_
                 else "NA"
             )
 
-    def categorize_incomplete_matches(trec: genePredRecord, ref: genePredRecord)-> str:
+    def categorize_incomplete_matches(trec: genePredRecord, ref: genePredRecord) -> str:
         """Returns the subcategory of incomplete splice matches
 
         intron_retention --- at least one trec exon covers at least two adjacent ref exons
@@ -416,7 +415,7 @@ def transcriptsKnownSpliceSites(trec: genePredRecord, ref_chr: list, start_ends_
             ref_exon_tree.insert(e.start, e.end, i)
         for e in trec.exons:
             if (
-                len(ref_exon_tree.find(e.start, e.end)) > 1
+                    len(ref_exon_tree.find(e.start, e.end)) > 1
             ):  # multiple ref exons covered
                 return "intron_retention"
 
@@ -477,7 +476,7 @@ def transcriptsKnownSpliceSites(trec: genePredRecord, ref_chr: list, start_ends_
             if trec.id == ref.id or ref.length < min_ref_len:
                 continue  # cannot use itself as reference
 
-            if trec.txStart < ref.txEnd and ref.txStart < trec.txEnd: # It is < and not <= because start is 0-based and end 1-based
+            if trec.txStart < ref.txEnd and ref.txStart < trec.txEnd:  # It is < and not <= because start is 0-based and end 1-based
                 hits_by_gene[ref.gene].append(ref)
 
         if len(hits_by_gene) == 0:
@@ -509,12 +508,12 @@ def transcriptsKnownSpliceSites(trec: genePredRecord, ref_chr: list, start_ends_
                 # --MONO-EXONIC REFERENCE--#
                 if ref.exonCount == 1:
                     if (
-                        ref.exonCount == 1
+                            ref.exonCount == 1
                     ):  # mono-exonic reference, handle specially here
                         if (
-                            calc_exon_overlap(trec.exons, ref.exons) > 0
-                            and cat_ranking[isoform_hit.str_class]
-                            < cat_ranking["geneOverlap"]
+                                calc_exon_overlap(trec.exons, ref.exons) > 0
+                                and cat_ranking[isoform_hit.str_class]
+                                < cat_ranking["geneOverlap"]
                         ):
                             isoform_hit = myQueryTranscripts(
                                 trec.id,
@@ -552,12 +551,12 @@ def transcriptsKnownSpliceSites(trec: genePredRecord, ref_chr: list, start_ends_
                     )
 
                     if match_type not in (
-                        "exact",
-                        "subset",
-                        "partial",
-                        "concordant",
-                        "super",
-                        "nomatch",
+                            "exact",
+                            "subset",
+                            "partial",
+                            "concordant",
+                            "super",
+                            "nomatch",
                     ):
                         raise Exception(
                             "Unknown match category {0}!".format(match_type)
@@ -574,10 +573,10 @@ def transcriptsKnownSpliceSites(trec: genePredRecord, ref_chr: list, start_ends_
                         # (1) no prev hits yet
                         # (2) this one is better (prev not FSM or is FSM but worse tss/tts)
                         if (
-                            cat_ranking[isoform_hit.str_class]
-                            < cat_ranking["full-splice_match"]
-                            or abs(diff_tss) + abs(diff_tts)
-                            < isoform_hit.get_total_diff()
+                                cat_ranking[isoform_hit.str_class]
+                                < cat_ranking["full-splice_match"]
+                                or abs(diff_tss) + abs(diff_tts)
+                                < isoform_hit.get_total_diff()
                         ):
                             # subcategory for matching 5' and matching 3'
                             if abs(diff_tss) <= 50 and abs(diff_tts) <= 50:
@@ -631,9 +630,9 @@ def transcriptsKnownSpliceSites(trec: genePredRecord, ref_chr: list, start_ends_
                         if cat_ranking[isoform_hit.str_class] < cat_ranking[
                             "incomplete-splice_match"
                         ] or (
-                            isoform_hit.str_class == "incomplete-splice_match"
-                            and abs(diff_tss) + abs(diff_tts)
-                            < isoform_hit.get_total_diff()
+                                isoform_hit.str_class == "incomplete-splice_match"
+                                and abs(diff_tss) + abs(diff_tts)
+                                < isoform_hit.get_total_diff()
                         ):
                             isoform_hit = myQueryTranscripts(
                                 trec.id,
@@ -673,23 +672,23 @@ def transcriptsKnownSpliceSites(trec: genePredRecord, ref_chr: list, start_ends_
                         q_ex_overlap = calc_exon_overlap(trec.exons, ref.exons)
                         q_exon_d = abs(trec.exonCount - ref.exonCount)
                         if (
-                            cat_ranking[isoform_hit.str_class]
-                            < cat_ranking["anyKnownJunction"]
-                            or (
+                                cat_ranking[isoform_hit.str_class]
+                                < cat_ranking["anyKnownJunction"]
+                                or (
                                 isoform_hit.str_class == "anyKnownJunction"
                                 and q_sp_hit > isoform_hit.q_splicesite_hit
-                            )
-                            or (
+                        )
+                                or (
                                 isoform_hit.str_class == "anyKnownJunction"
                                 and q_sp_hit == isoform_hit.q_splicesite_hit
                                 and q_ex_overlap > isoform_hit.q_exon_overlap
-                            )
-                            or (
+                        )
+                                or (
                                 isoform_hit.str_class == "anyKnownJunction"
                                 and q_sp_hit == isoform_hit.q_splicesite_hit
                                 and q_exon_d
                                 < abs(trec.exonCount - isoform_hit.refExons)
-                            )
+                        )
                         ):
                             isoform_hit = myQueryTranscripts(
                                 trec.id,
@@ -724,12 +723,12 @@ def transcriptsKnownSpliceSites(trec: genePredRecord, ref_chr: list, start_ends_
                         # at this point, no junction overlap, but may be a single splice site (donor or acceptor) match?
                         # also possibly just exonic (no splice site) overlap
                         if (
-                            cat_ranking[isoform_hit.str_class]
-                            < cat_ranking["anyKnownSpliceSite"]
-                            and calc_splicesite_agreement(
-                                trec.exons, ref.exons
-                            )
-                            > 0
+                                cat_ranking[isoform_hit.str_class]
+                                < cat_ranking["anyKnownSpliceSite"]
+                                and calc_splicesite_agreement(
+                            trec.exons, ref.exons
+                        )
+                                > 0
                         ):
                             isoform_hit = myQueryTranscripts(
                                 trec.id,
@@ -761,10 +760,10 @@ def transcriptsKnownSpliceSites(trec: genePredRecord, ref_chr: list, start_ends_
 
                         if isoform_hit.str_class == "":  # still not hit yet, check exonic overlap
                             if (
-                                cat_ranking[isoform_hit.str_class]
-                                < cat_ranking["geneOverlap"]
-                                and calc_exon_overlap(trec.exons, ref.exons)
-                                > 0
+                                    cat_ranking[isoform_hit.str_class]
+                                    < cat_ranking["geneOverlap"]
+                                    and calc_exon_overlap(trec.exons, ref.exons)
+                                    > 0
                             ):
                                 isoform_hit = myQueryTranscripts(
                                     trec.id,
@@ -852,9 +851,9 @@ def transcriptsKnownSpliceSites(trec: genePredRecord, ref_chr: list, start_ends_
                 continue  # cannot use itself as reference
             # if hits_exon(trec, ref) and ref.exonCount == 1:
             if (
-                trec.txStart < ref.txEnd
-                and ref.txStart < trec.txEnd
-                and ref.exonCount == 1
+                    trec.txStart < ref.txEnd
+                    and ref.txStart < trec.txEnd
+                    and ref.exonCount == 1
             ):
                 if ref.strand != trec.strand:
                     # opposite strand, just record it in AS_genes
@@ -899,12 +898,12 @@ def transcriptsKnownSpliceSites(trec: genePredRecord, ref_chr: list, start_ends_
                     continue  # to not match with itself
                 # if hits_exon(trec, ref) and ref.exonCount >= 2:
                 if (
-                    trec.txStart < ref.txEnd
-                    and ref.txStart < trec.txEnd
-                    and ref.exonCount >= 2
+                        trec.txStart < ref.txEnd
+                        and ref.txStart < trec.txEnd
+                        and ref.exonCount >= 2
                 ):
                     if (
-                        calc_exon_overlap(trec.exons, ref.exons) == 0
+                            calc_exon_overlap(trec.exons, ref.exons) == 0
                     ):  # no exonic overlap, skip!
                         continue
 
@@ -914,7 +913,7 @@ def transcriptsKnownSpliceSites(trec: genePredRecord, ref_chr: list, start_ends_
                         continue
 
                     diff_tss, diff_tts = get_diff_tss_tts(trec, ref)
-                    
+
                     flag = False
                     for e in ref.exons:
                         if e.start <= trec.txStart < trec.txEnd <= e.end:
@@ -932,7 +931,7 @@ def transcriptsKnownSpliceSites(trec: genePredRecord, ref_chr: list, start_ends_
                             get_gene_diff_tss_tts(isoform_hit)
                             flag = True
                             return isoform_hit
-                    
+
                     if flag:
                         continue
                     # if we haven't exited here, then ISM hit is not found yet
@@ -969,10 +968,10 @@ def transcriptsKnownSpliceSites(trec: genePredRecord, ref_chr: list, start_ends_
 
 
 def novelIsoformsKnownGenes(
-    isoforms_hit: myQueryTranscripts,
-    trec: genePredRecord,
-    junctions_by_chr: dict,
-    junctions_by_gene: dict,
+        isoforms_hit: myQueryTranscripts,
+        trec: genePredRecord,
+        junctions_by_chr: dict,
+        junctions_by_gene: dict,
 ) -> myQueryTranscripts:
     """Check for NIC, NNC or fusion
     At this point definitely not FSM or ISM, see if it is NIC, NNC, or fusion
@@ -992,11 +991,11 @@ def novelIsoformsKnownGenes(
                 junctions_by_chr[trec.chrom]["da_pairs"], (e.start, e.end)
             )
             if (
-                m < len(junctions_by_chr[trec.chrom]["da_pairs"])
-                and e.start
-                <= junctions_by_chr[trec.chrom]["da_pairs"][m][0]
-                < junctions_by_chr[trec.chrom]["da_pairs"][m][1]
-                < e.end
+                    m < len(junctions_by_chr[trec.chrom]["da_pairs"])
+                    and e.start
+                    <= junctions_by_chr[trec.chrom]["da_pairs"][m][0]
+                    < junctions_by_chr[trec.chrom]["da_pairs"][m][1]
+                    < e.end
             ):
                 return True
         return False
@@ -1016,12 +1015,12 @@ def novelIsoformsKnownGenes(
         all_junctions_in_hit_ref = True
         for d, a in trec.junctions:
             all_junctions_known = (
-                all_junctions_known
-                and (d in junctions_by_chr[trec.chrom]["donors"])
-                and (a in junctions_by_chr[trec.chrom]["acceptors"])
+                    all_junctions_known
+                    and (d in junctions_by_chr[trec.chrom]["donors"])
+                    and (a in junctions_by_chr[trec.chrom]["acceptors"])
             )
             all_junctions_in_hit_ref = all_junctions_in_hit_ref and (
-                (d, a) in ref_gene_junctions
+                    (d, a) in ref_gene_junctions
             )
         if all_junctions_known:
             isoforms_hit.str_class = "novel_in_catalog"
@@ -1039,7 +1038,7 @@ def novelIsoformsKnownGenes(
                         st_other_gene.append(d)
                     if a not in gene_st:
                         st_other_gene.append(a)
-                
+
                 for g in junctions_by_gene:
                     gene_st = [st for sj in junctions_by_gene[g] for st in sj]
                     for st in gene_st:
@@ -1048,10 +1047,10 @@ def novelIsoformsKnownGenes(
                             st_other_gene.remove(st)
                     if len(st_other_gene) == 0:
                         break
-                
+
                 for g in other_ref_genes:
                     isoforms_hit.genes.append(g)
-          
+
         else:
             isoforms_hit.str_class = "novel_not_in_catalog"
             isoforms_hit.subtype = "at_least_one_novel_splicesite"
@@ -1088,10 +1087,10 @@ def novelIsoformsKnownGenes(
 
 
 def associationOverlapping(
-    isoforms_hit: myQueryTranscripts,
-    trec: genePredRecord,
-    junctions_by_chr: dict,
-    trans_by_region: list,
+        isoforms_hit: myQueryTranscripts,
+        trec: genePredRecord,
+        junctions_by_chr: dict,
+        trans_by_region: list,
 ) -> myQueryTranscripts:
     """Check for antisense, genic, genic-intron or intergenic
 
@@ -1130,11 +1129,11 @@ def associationOverlapping(
                         isoforms_hit.str_class = "genic_intron"
                         for ref in trans_by_region:
                             if (
-                                da_pairs[i][0] in ref.exonEnds
-                                and da_pairs[i][1] in ref.exonStarts
+                                    da_pairs[i][0] in ref.exonEnds
+                                    and da_pairs[i][1] in ref.exonStarts
                             ):
                                 if ref.exonEnds.index(da_pairs[i][0]) == (
-                                    ref.exonStarts.index(da_pairs[i][1]) - 1
+                                        ref.exonStarts.index(da_pairs[i][1]) - 1
                                 ):
                                     isoforms_hit.genes = [ref.gene]
                         break
@@ -1234,7 +1233,8 @@ def write_category_file(data: dict, out_name: str):
     """
 
     f_out = open(out_name, "w")
-    f_out.write("transcript_id\tgene_id\tstructural_category\tassociated_gene\tassociated_trans\tchrom\tstrand\texons\tdonors\tacceptors\tTSS_genomic_coord\tTTS_genomic_coord\tlength\n")
+    f_out.write(
+        "transcript_id\tgene_id\tstructural_category\tassociated_gene\tassociated_trans\tchrom\tstrand\texons\tdonors\tacceptors\tTSS_genomic_coord\tTTS_genomic_coord\tlength\n")
 
     for chrom in data.values():
         for trans in chrom:
