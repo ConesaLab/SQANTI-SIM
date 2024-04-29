@@ -257,3 +257,25 @@ if ('min_cov' %in% colnames(data.index) & 'within_CAGE_peak' %in% colnames(data.
   print(p10)
 }
 ```
+```{r, results='asis'}
+if (!file.exists(quant.file)) {
+  cat("Quantification file does not exist! Abosorting analysis...")
+} else {
+  cat("\n\n## Isoform quantification {.tabset}\n\n")
+  cat("\n\n### Overview\n\n")
+}
+```
+```{r, eval = tQuant}
+tQuant
+````
+```{r, results='asis'}
+cat('\n\n### SCC\n\n')
+print(pQuant1)
+
+cat('\n\n### MRD\n\n')
+print(pQuant2)
+
+cat('\n\n### NRMSE\n\n')
+print(pQuant3)
+```
+

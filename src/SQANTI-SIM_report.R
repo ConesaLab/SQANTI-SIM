@@ -334,6 +334,56 @@ data.index$donors <- NULL
 data.index$acceptors <- NULL
 data.index$sim_type[which(data.index$sim_counts == 0)] <- 'absent' # Ignore not simulated
 
+# Read quant file
+# Check if quant file exists
+if (file.exists(quant.file)){
+  data.quant <- read.table(quant.file, header=FALSE, as.is=T, sep="\t")
+  colnames(data.quant) <- c("transcript_id", "tpm")
+  #-------------------- Quantificantion performance
+  ground_truth <- data.index[, c("transcript_id", "requested_tpm")]
+  # Merge data frames by isoform IDs
+  merged_data <- merge(ground_truth, data.quant, by = "transcript_id")
+  ######## Calculate Spearman Correlation Coefficient
+  scc <- cor(merged_data$requested_tpm, merged_data$tpm, method = "spearman")
+  # Print the Spearman Correlation Coefficient
+  print(paste("Spearman Correlation Coefficient:", scc))
+  # Create the correlation text to display
+  cor_text_scc <- sprintf("Spearman's rho = %.2f", scc)
+  ########  Calculate the median Relative Differences
+  merged_data$relative_diff <- abs(merged_data$tpm - merged_data$requested_tpm) / merged_data$requested_tpm
+  # Handling cases where the true TPM is zero to avoid division by zero
+  merged_data$relative_diff[is.infinite(merged_data$relative_diff)] <- NA  # Optional: replace infinite values with NA
+  # Calculate the Median Relative Difference (MRD)
+  mrd <- median(merged_data$relative_diff, na.rm = TRUE)  # na.rm = TRUE to remove NA values due to division by zero or other issues
+  # Filtering extreme outliers for visualization (optional)
+  quantile_limit <- quantile(merged_data$relative_diff, 0.99, na.rm = TRUE) # Find the 99th percentile
+  merged_data_filtered <- merged_data[merged_data$relative_diff <= quantile_limit, ]
+  print(paste("Median Relative Difference (MRD):", mrd))
+  ############### Normalized Root Mean Square Error (NRMSE)
+  # Calculate RMSE
+  rmse <- sqrt(mean((merged_data$tpm - merged_data$requested_tpm)^2))
+  # Calculate the standard deviation of the observed data
+  sd_observed <- sd(merged_data$requested_tpm)
+  # Calculate NRMSE
+  nrmse <- rmse / sd_observed
+  # Correlation text to annotate on the plot
+  cor_text_nrmse <- paste("NRMSE =", round(nrmse, 4))
+  ############ Calculate the number of transcripts with TPM > 0
+  expressed_transcripts <- sum(data.quant$tpm > 0)
+  # Calculate the total number of transcripts
+  total_transcripts <- nrow(data.index[data.index$requested_tpm > 0,])
+  # Calculate the Percentage of Expressed Transcripts (PET)
+  pet <- (expressed_transcripts / total_transcripts) * 100
+  # Print the PET
+  print(paste("Percentage of Expressed Transcripts (PET):", pet, "%"))
+
+  quant.metrics <- c("Spearman Correlation Coefficient (SCC)" = scc, "Median Relative Difference (MRD)" = mrd, "Normalized Root Mean Square Error (NRMSE)" = nrmse, "Percentage of Expressed Transcripts (PET)" = pet)
+  quant.metrics <- as.data.frame(quant.metrics)
+  # Rounding all values
+  colnames(quant.metrics) <- "Evaluation Value"
+}
+
+
 # -------------------- Performance metrics
 # Isoform level performance
 MAX_TSS_TTS_DIFF = 50
@@ -391,7 +441,6 @@ if ('min_cov' %in% colnames(data.index) & "within_CAGE_peak" %in% colnames(data.
                       data.class[data.class$pipeline_performance == "FP", c("structural_category", "exons", "length", "pipeline_performance")])
 }
 
-
 #######################################
 #                                     #
 #     TABLE AND PLOT GENERATION       #
@@ -420,6 +469,10 @@ if ('min_cov' %in% colnames(data.index) & "within_CAGE_peak" %in% colnames(data.
 # p11: min SJ cov by short reads
 # p12: ratio TSS
 # px: radar chart from perfomance metrics
+# pQuant1: Spearman Correlation Coefficient plot
+# pQuant2: Median relativly difference plot
+# pQuant3: NRMSE plot
+# tQuant: quantification metrics
 
 print("***Generating plots for the report")
 
@@ -759,6 +812,76 @@ if ('min_cov' %in% colnames(data.index) & 'within_CAGE_peak' %in% colnames(data.
     top = "Transcripts supported by short reads and CAGE peaks"
   )
 }
+
+# if quantification file exists
+if (file.exists(quant.file)) {
+  pQuant1 <- ggplot(merged_data, aes(x = requested_tpm, y = tpm)) +
+    geom_point(alpha = 0.5, color = "blue") +  # Adjust point transparency and color
+    geom_smooth(method = "lm", se = TRUE, color = "red") +  # Linear model with confidence interval
+    annotate("text", x = Inf, y = Inf, label = cor_text_scc, hjust = 1.1, vjust = 1.1, size = 5, color = "black") +  # Add correlation text
+    labs(title = "Scatter plot of True vs. Estimated TPM",
+         x = "Simulated TPM (ground truth)",
+         y = "Estimated TPM") +
+    theme_minimal(base_size = 12) +  # A minimal theme with base font size
+    theme(plot.background = element_rect(fill = "white", colour = "white"),  # Set plot background to white
+          panel.background = element_rect(fill = "white", colour = "white"),  # Set panel background to white
+          plot.title = element_text(hjust = 0.5),  # Center the plot title
+          plot.margin = margin(10, 10, 10, 10)) +  # Adjust plot margins
+    scale_x_continuous(name = "Simulated TPM (ground truth)", breaks = scales::pretty_breaks(n = 10)) +
+    scale_y_continuous(name = "Estimated TPM", breaks = scales::pretty_breaks(n = 10)) +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank(), axis.line = element_line(colour = "black"))
+
+  pQuant2 <- ggplot(merged_data_filtered, aes(x = factor(0), y = relative_diff)) +
+    geom_violin(trim = FALSE, fill = "#69b3a2", color = "#1b4332") +
+    labs(title = "Violin Plot of Relative Differences",
+         subtitle = "Adjusted Y-axis to Exclude Extreme Outliers",
+         y = "Relative Difference",
+         x = "") +
+    theme_minimal(base_size = 16, base_family = "Helvetica") +
+    theme(
+      plot.title = element_text(size = 20, face = "bold"),
+      plot.subtitle = element_text(size = 14),
+      axis.text.x = element_blank(),
+      axis.ticks.x = element_blank(),
+      axis.text.y = element_text(size = 14),
+      axis.title.y = element_text(size = 16),
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      panel.border = element_blank(),
+      plot.background = element_blank(),
+      plot.margin = margin(20, 20, 20, 20)
+    ) +
+    ylim(0, quantile(merged_data_filtered$relative_diff, 0.95, na.rm = TRUE)) +
+    geom_text(aes(x = 1.2, y = median(merged_data_filtered$relative_diff, na.rm = TRUE),
+                  label = sprintf("Median RD: %.2f", median(merged_data_filtered$relative_diff, na.rm = TRUE),size = 5)),
+              hjust = 0, color = "#1b4332", size = 5, vjust = -0.5)
+
+  pQuant3 <- ggplot(merged_data, aes(x = requested_tpm, y = tpm)) +
+    geom_point(alpha = 0.5, color = "blue") +  # Adjust point transparency and color
+    geom_smooth(method = "lm", se = TRUE, color = "red") +  # Linear model with confidence interval
+    annotate("text", x = Inf, y = Inf, label = cor_text_nrmse, hjust = 1.1, vjust = 1.1, size = 5, color = "black") +  # Add NRMSE text
+    labs(title = "Scatter plot of True vs. Estimated TPM",
+         x = "Simulated TPM (ground truth)",
+         y = "Estimated TPM") +
+    theme_minimal(base_size = 12) +  # A minimal theme with base font size
+    theme(plot.background = element_rect(colour = "white"),  # Set plot background to white
+          plot.title = element_text(hjust = 0.5),  # Center the plot title
+          plot.margin = margin(10, 10, 10, 10),  # Adjust plot margins
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.background = element_blank(),
+          axis.line = element_line(colour = "black")) +
+    scale_x_continuous(name = "Simulated TPM (ground truth)", breaks = scales::pretty_breaks(n = 10)) +
+    scale_y_continuous(name = "Estimated TPM", breaks = scales::pretty_breaks(n = 10))
+
+  tQuant <- DT::datatable(quant.metrics, class = 'compact', extensions = "Buttons",
+                          options = list(pageLength = 15, dom = 't', buttons = c("copy", "csv", "pdf")),
+                          caption = htmltools::tags$caption(
+                            style = 'caption-side: bottom; text-align: center;', 'Table 4: ',
+                            htmltools::em('Quantification metrics.'))) %>%
+    DT::formatRound('Evaluation Value', digits = 3)
+}
+
 
 # PLOT X: Radar chart
 # Generated in RMD file
