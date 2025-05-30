@@ -167,35 +167,39 @@ sqantisim.stats.t[is.na(sqantisim.stats.t)] <- NA
 sqantisim.stats.t <- rbind(1, 0, sqantisim.stats.t)
 
 n <- length(rownames(sqantisim.stats.t)[rownames(sqantisim.stats.t) %in% c("Known", "Novel")])
-par(mar=c(1,1,1,1), mfrow=c(1,n))
-for (i in 1:n){
-  radarchart(
-  sqantisim.stats.t[c(1, 2, i+2),], axistype = 1,
-  pcol = radar.palette[[rownames(sqantisim.stats.t)[i+2]]], pfcol = scales::alpha(radar.palette[[rownames(sqantisim.stats.t)[i+2]]], 0.5), plwd = 2, plty = 1,
-  # Customize the grid
-  cglcol = "grey", cglty = 1, cglwd = 0.8,
-  # Customize the axis
-  axislabcol = "grey", 
-  # Variable labels
-  vlcex = 0.7, vlabels = colnames(sqantisim.stats.t[c(1, 2, i+2),]),
-  caxislabels = c(0, 0.25, 0.5, 0.75, 1), title = rownames(sqantisim.stats.t)[i+2]
-)
+if (n > 0) {
+  par(mar=c(1,1,1,1), mfrow=c(1,n))
+  for (i in 1:n){
+    radarchart(
+    sqantisim.stats.t[c(1, 2, i+2),], axistype = 1,
+    pcol = radar.palette[[rownames(sqantisim.stats.t)[i+2]]], pfcol = scales::alpha(radar.palette[[rownames(sqantisim.stats.t)[i+2]]], 0.5), plwd = 2, plty = 1,
+    # Customize the grid
+    cglcol = "grey", cglty = 1, cglwd = 0.8,
+    # Customize the axis
+    axislabcol = "grey", 
+    # Variable labels
+    vlcex = 0.7, vlabels = colnames(sqantisim.stats.t[c(1, 2, i+2),]),
+    caxislabels = c(0, 0.25, 0.5, 0.75, 1), title = rownames(sqantisim.stats.t)[i+2]
+  )
+  }
 }
 
 n <- length(rownames(sqantisim.stats.t)[rownames(sqantisim.stats.t) %in% c("1", "2", "Known", "Novel")])
-par(mar=c(1,1,1,1), mfrow=c(2,ceiling(n/2)))
-for (i in (1+n-2):(nrow(sqantisim.stats.t)-2)){
-  radarchart(
-  sqantisim.stats.t[c(1, 2, i+2),], axistype = 1,
-  pcol = radar.palette[[rownames(sqantisim.stats.t)[i+2]]], pfcol = scales::alpha(radar.palette[[rownames(sqantisim.stats.t)[i+2]]], 0.5), plwd = 2, plty = 1,
-  # Customize the grid
-  cglcol = "grey", cglty = 1, cglwd = 0.8,
-  # Customize the axis
-  axislabcol = "grey", 
-  # Variable labels
-  vlcex = 0.7, vlabels = colnames(sqantisim.stats.t[c(1, 2, i+2),]),
-  caxislabels = c(0, 0.25, 0.5, 0.75, 1), title = rownames(sqantisim.stats.t)[i+2]
-)
+if (n > 2) {
+  par(mar=c(1,1,1,1), mfrow=c(2,ceiling(n/2)))
+  for (i in (1+n-2):(nrow(sqantisim.stats.t)-2)){
+    radarchart(
+    sqantisim.stats.t[c(1, 2, i+2),], axistype = 1,
+    pcol = radar.palette[[rownames(sqantisim.stats.t)[i+2]]], pfcol = scales::alpha(radar.palette[[rownames(sqantisim.stats.t)[i+2]]], 0.5), plwd = 2, plty = 1,
+    # Customize the grid
+    cglcol = "grey", cglty = 1, cglwd = 0.8,
+    # Customize the axis
+    axislabcol = "grey", 
+    # Variable labels
+    vlcex = 0.7, vlabels = colnames(sqantisim.stats.t[c(1, 2, i+2),]),
+    caxislabels = c(0, 0.25, 0.5, 0.75, 1), title = rownames(sqantisim.stats.t)[i+2]
+  )
+  }
 }
 ```
 
@@ -259,23 +263,19 @@ if ('min_cov' %in% colnames(data.index) & 'within_CAGE_peak' %in% colnames(data.
 ```
 ```{r, results='asis'}
 if (!file.exists(quant.file)) {
-  cat("Quantification file does not exist! Abosorting analysis...")
+  cat("Quantification file does not exist! Aborting analysis...")
 } else {
   cat("\n\n## Isoform quantification {.tabset}\n\n")
   cat("\n\n### Overview\n\n")
+  print(tQuant)
+  cat('\n\n### SCC\n\n')
+  print(pQuant1)
+
+  cat('\n\n### MRD\n\n')
+  print(pQuant2)
+
+  cat('\n\n### NRMSE\n\n')
+  print(pQuant3)
 }
-```
-```{r, eval = tQuant}
-tQuant
-````
-```{r, results='asis'}
-cat('\n\n### SCC\n\n')
-print(pQuant1)
-
-cat('\n\n### MRD\n\n')
-print(pQuant2)
-
-cat('\n\n### NRMSE\n\n')
-print(pQuant3)
 ```
 

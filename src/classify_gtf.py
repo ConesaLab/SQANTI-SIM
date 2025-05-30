@@ -27,7 +27,7 @@ except ImportError:
     sys.exit(-1)
 
 try:
-    from src.SQANTI3.utilities.cupcake.tofu.compare_junctions import compare_junctions
+    from src.SQANTI3.cupcake.tofu.compare_junctions import compare_junctions
 except ImportError:
     print("Unable to import cupcake.tofu! Please make sure you install cupcake.", file=sys.stderr)
     sys.exit(-1)

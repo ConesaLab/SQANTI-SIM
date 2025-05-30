@@ -138,8 +138,27 @@ def pbsim_simulation(args):
             sys.exit(1)
 
         # Move output files to tmp directory
-        os.rename("sd.fastq", os.path.join(tmp_dir, "sd.fastq"))
-        os.rename("sd.maf", os.path.join(tmp_dir, "sd.maf"))
+        # Handle both compressed and uncompressed PBSIM3 output
+        if os.path.exists("sd.fq.gz"):
+            # Decompress and rename FASTQ file
+            subprocess.check_call("gunzip sd.fq.gz", shell=True)
+            os.rename("sd.fq", os.path.join(tmp_dir, "sd.fastq"))
+        elif os.path.exists("sd.fastq"):
+            os.rename("sd.fastq", os.path.join(tmp_dir, "sd.fastq"))
+        else:
+            print("ERROR: No PBSIM3 FASTQ output found", file=sys.stderr)
+            sys.exit(1)
+            
+        if os.path.exists("sd.maf.gz"):
+            # Decompress and move MAF file
+            subprocess.check_call("gunzip sd.maf.gz", shell=True)
+            os.rename("sd.maf", os.path.join(tmp_dir, "sd.maf"))
+        elif os.path.exists("sd.maf"):
+            os.rename("sd.maf", os.path.join(tmp_dir, "sd.maf"))
+        else:
+            print("ERROR: No PBSIM3 MAF output found", file=sys.stderr)
+            sys.exit(1)
+
         maf_file = os.path.join(tmp_dir, "sd.maf")
         pbsm_fasta = os.path.join(args.dir, "PBSIM3_simulated.fasta")
         read_to_iso = os.path.join(args.dir, "PBSIM3_simulated.read_to_isoform.tsv")
@@ -168,8 +187,25 @@ def pbsim_simulation(args):
             sys.exit(1)
 
         # Move output files to tmp directory
-        os.rename("sd.sam", os.path.join(tmp_dir, "sd.sam"))
-        os.rename("sd.maf", os.path.join(tmp_dir, "sd.maf"))
+        # Handle both compressed and uncompressed PBSIM3 output
+        if os.path.exists("sd.sam.gz"):
+            subprocess.check_call("gunzip sd.sam.gz", shell=True)
+            os.rename("sd.sam", os.path.join(tmp_dir, "sd.sam"))
+        elif os.path.exists("sd.sam"):
+            os.rename("sd.sam", os.path.join(tmp_dir, "sd.sam"))
+        else:
+            print("ERROR: No PBSIM3 SAM output found", file=sys.stderr)
+            sys.exit(1)
+            
+        if os.path.exists("sd.maf.gz"):
+            subprocess.check_call("gunzip sd.maf.gz", shell=True)
+            os.rename("sd.maf", os.path.join(tmp_dir, "sd.maf"))
+        elif os.path.exists("sd.maf"):
+            os.rename("sd.maf", os.path.join(tmp_dir, "sd.maf"))
+        else:
+            print("ERROR: No PBSIM3 MAF output found", file=sys.stderr)
+            sys.exit(1)
+
         # convert sam file to bam file
         cmd = "samtools view -bS " + tmp_dir + "/sd.sam > " + tmp_dir + "/sd.bam"
         if subprocess.check_call(cmd, shell=True) != 0:
@@ -476,7 +512,7 @@ def ont_simulation(args):
         "-b",
         "guppy",
         "-t",
-        str(args.cores),
+        "1",
         "--seed",
         str(args.seed),
         "--fastq",

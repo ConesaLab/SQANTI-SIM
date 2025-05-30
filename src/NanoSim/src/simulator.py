@@ -1560,28 +1560,45 @@ def simulation(mode, out, dna_type, per, kmer_bias, basecaller, read_type, max_l
         #    num_simulate += number_aligned % num_threads
 
         if mode == "genome":
-            p = mp.Process(target=simulation_aligned_genome,
-                           args=(dna_type, min_l, max_l, median_l, sd_l, aligned_subfile, error_subfile,
-                                 kmer_bias, basecaller, read_type, fastq, num_simulate, per, chimeric))
-            procs.append(p)
-            p.start()
+            if num_threads == 1:
+                # Call directly to avoid multiprocessing issues
+                simulation_aligned_genome(dna_type, min_l, max_l, median_l, sd_l, aligned_subfile, error_subfile,
+                                         kmer_bias, basecaller, read_type, fastq, num_simulate, per, chimeric)
+            else:
+                p = mp.Process(target=simulation_aligned_genome,
+                               args=(dna_type, min_l, max_l, median_l, sd_l, aligned_subfile, error_subfile,
+                                     kmer_bias, basecaller, read_type, fastq, num_simulate, per, chimeric))
+                procs.append(p)
+                p.start()
 
         elif mode == "metagenome":
-            p = mp.Process(target=simulation_aligned_metagenome,
-                           args=(min_l, max_l, median_l, sd_l, aligned_subfile, error_subfile, kmer_bias,
-                                 basecaller, read_type, fastq, num_simulate, per, chimeric))
-            procs.append(p)
-            p.start()
+            if num_threads == 1:
+                # Call directly to avoid multiprocessing issues
+                simulation_aligned_metagenome(min_l, max_l, median_l, sd_l, aligned_subfile, error_subfile, kmer_bias,
+                                             basecaller, read_type, fastq, num_simulate, per, chimeric)
+            else:
+                p = mp.Process(target=simulation_aligned_metagenome,
+                               args=(min_l, max_l, median_l, sd_l, aligned_subfile, error_subfile, kmer_bias,
+                                     basecaller, read_type, fastq, num_simulate, per, chimeric))
+                procs.append(p)
+                p.start()
 
-        else:
+        else:  # transcriptome mode
             reads_to_sim_thread = reads_to_sim[(num_simulate*i):(num_simulate*(i+1))]
-            p = mp.Process(target=simulation_aligned_transcriptome,
-                           args=(model_ir, aligned_subfile, error_subfile, kmer_bias, basecaller, read_type,
-                                 num_simulate, polya, fastq, per, uracil,
-                                 reads_to_sim_thread, dict_ref_len)) # Add exp file and num_threads (Modified for SQANTI-SIM)
-            procs.append(p)
-            p.start()
+            if num_threads == 1:
+                # Call directly to avoid multiprocessing issues
+                simulation_aligned_transcriptome(model_ir, aligned_subfile, error_subfile, kmer_bias, basecaller, read_type,
+                                                num_simulate, polya, fastq, per, uracil,
+                                                reads_to_sim_thread, dict_ref_len)
+            else:
+                p = mp.Process(target=simulation_aligned_transcriptome,
+                               args=(model_ir, aligned_subfile, error_subfile, kmer_bias, basecaller, read_type,
+                                     num_simulate, polya, fastq, per, uracil,
+                                     reads_to_sim_thread, dict_ref_len)) # Add exp file and num_threads (Modified for SQANTI-SIM)
+                procs.append(p)
+                p.start()
 
+    # Only join processes if we actually created any
     for p in procs:
         p.join()
 

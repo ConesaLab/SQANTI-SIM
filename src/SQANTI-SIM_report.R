@@ -419,7 +419,7 @@ if ("min_cov" %in% colnames(data.index)) {
   sel <- c(sel, "min_cov")
 } 
 
-data.index <- data.index[data.index[,"sim_counts"] > 0, sel]
+data.index <- data.index[data.index[,"sim_counts"] >= 0, sel]
 data.index$pipeline_performance <- as.character(data.index$pipeline_performance)
 
 data.class$pipeline_performance <- ifelse(data.class$isoform %in% data.index$pipeline_performance, "TP", "FP")
@@ -548,14 +548,14 @@ write.table(min.sqantisim.stats, file = paste(output_directory, 'SQANTI-SIM_metr
 
 # -------------------- PLOT FULL
 # PLOT 1: Simulated and reconstructed isoform distribution
-p1A <- data.index[data.index$sim_counts >= 1, ] %>%
+p1A <- data.index[data.index$sim_counts >= 0, ] %>%
   mutate(structural_category = ifelse(sim_type == "known", "FSM", as.character(structural_category))) %>%
   mutate(structural_category = factor(structural_category, levels = xaxislabelsF1, ordered=TRUE)) %>% 
   ggplot(aes(x=structural_category)) +
-  geom_bar(aes(y = (..count..)/sum(..count..)*100, fill=structural_category), color="black", linewidth=0.3, width=0.7) +
+  geom_bar(aes(y = after_stat(count)/sum(after_stat(count))*100, fill=structural_category), color="black", linewidth=0.3, width=0.7) +
   scale_x_discrete(drop=FALSE) + 
   mytheme +
-  geom_blank(aes(y=((..count..)/sum(..count..))), stat = "count") +
+  geom_blank(aes(y=(after_stat(count)/sum(after_stat(count)))), stat = "count") +
   theme(axis.text.x = element_text(angle = 45, vjust = 0.5, size=12)) +
   scale_fill_manual(values = cat.palette, guide='none') +
   ggtitle("Simulated isoforms" ) +
@@ -565,11 +565,11 @@ p1A <- data.index[data.index$sim_counts >= 1, ] %>%
 
 p1B <- data.class %>%
   ggplot(aes(x=structural_category)) +
-  geom_bar(aes(y = (..count..)/sum(..count..)*100, fill=structural_category, alpha = pipeline_performance), color="black", linewidth=0.3, width=0.7) +
+  geom_bar(aes(y = after_stat(count)/sum(after_stat(count))*100, fill=structural_category, alpha = pipeline_performance), color="black", linewidth=0.3, width=0.7) +
   scale_x_discrete(drop=FALSE) + 
   scale_alpha_manual(values = c(0.2, 1), name = "Trancript model calls") +
   mytheme +
-  geom_blank(aes(y=((..count..)/sum(..count..))), stat = "count") +
+  geom_blank(aes(y=(after_stat(count)/sum(after_stat(count)))), stat = "count") +
   theme(axis.text.x = element_text(angle = 45, vjust = 0.5, size=12)) +
   scale_fill_manual(values = cat.palette, guide='none') +
   ggtitle("Reconstructed transcript models" ) +
@@ -582,10 +582,16 @@ p1 <- annotate_figure(
 )
 
 # PLOT 2: Sn - Pr - F1
-p2 <- cbind(data.frame(Gene = c(res.gene["Sensitivity"], res.gene["Precision"], res.gene["F-score"])),
+temp_data <- cbind(data.frame(Gene = c(res.gene["Sensitivity"], res.gene["Precision"], res.gene["F-score"])),
       res.full$sqantisim.stats[c("Sensitivity", "Precision", "F-score"), colnames(res.full$sqantisim.stats[, res.full$sqantisim.stats["Total",] > 0])]) %>% 
-  mutate(stat = rownames(.)) %>% 
-  select(!FSM) %>% 
+  mutate(stat = rownames(.))
+
+# Only remove FSM column if it exists
+if ("FSM" %in% colnames(temp_data)) {
+  temp_data <- temp_data %>% select(!FSM)
+}
+
+p2 <- temp_data %>%
   pivot_longer(!stat, names_to = "sim_level", values_to = "value") %>% 
   mutate(sim_level = factor(sim_level,
                             levels = rev(c("Gene", colnames(res.full$sqantisim.stats))))) %>% 
@@ -692,7 +698,7 @@ p6 <- ggplot(res.full$data.summary[res.full$data.summary$structural_category %in
 # PLOT 7: Canonical Junctions
 p7 <- data.class[data.class$pipeline_performance == "FP" & !is.na(data.class$all_canonical), ] %>% 
   ggplot(aes(1, alpha = all_canonical, fill = structural_category)) +
-  geom_bar(aes(y = ..count..), position = "fill") +
+  geom_bar(aes(y = after_stat(count)), position = "fill") +
   scale_y_continuous(labels = scales::percent_format()) +
   scale_fill_manual(values = cat.palette, name = "Structural category") +
   scale_alpha_manual(values = c(0, 1), guide = "none") +
@@ -713,7 +719,7 @@ if ('min_cov' %in% colnames(data.index)) {
     mutate(SJ_cov = ifelse(min_cov >= 1, "True", "False")) %>%
     mutate(structural_category2 = ifelse(structural_category %in% as.character(unique(data.index$structural_category)), as.character(structural_category), "Other\nSCs")) %>% 
     na.omit()
-  p8A <- ggplot(dataTPFNFP[dataTPFNFP$structural_category2 == "FSM",], aes(x = pipeline_performance, y = (..count..), fill = structural_category, alpha=SJ_cov)) +
+  p8A <- ggplot(dataTPFNFP[dataTPFNFP$structural_category2 == "FSM",], aes(x = pipeline_performance, y = after_stat(count), fill = structural_category, alpha=SJ_cov)) +
     geom_bar(position = "stack") +
     facet_grid(. ~ structural_category) +
     scale_alpha_manual(values = c(0.5, 1), name = "Pipeline performance", labels = c("Not supported", "SR support")) +
@@ -725,7 +731,7 @@ if ('min_cov' %in% colnames(data.index)) {
     theme(axis.title.x = element_blank(),
           axis.title.y = element_blank())
   
-  p8B <- ggplot(dataTPFNFP[dataTPFNFP$structural_category2 != "FSM",], aes(x = pipeline_performance, y = (..count..), fill = structural_category, alpha=SJ_cov)) +
+  p8B <- ggplot(dataTPFNFP[dataTPFNFP$structural_category2 != "FSM",], aes(x = pipeline_performance, y = after_stat(count), fill = structural_category, alpha=SJ_cov)) +
     geom_bar(position = "stack") +
     facet_grid(. ~ structural_category) +
     scale_alpha_manual(values = c(0.5, 1), name = "Pipeline performance", labels = c("Not supported", "SR support")) +
@@ -746,7 +752,7 @@ if ('min_cov' %in% colnames(data.index)) {
 # PLOT 9: CAGE support
 if ('within_CAGE_peak' %in% colnames(data.index)){
   dataTPFNFP$within_CAGE_peak <- ifelse(dataTPFNFP$within_CAGE_peak == T | dataTPFNFP$within_CAGE_peak == "True", "True", "False")
-  p9A <- ggplot(dataTPFNFP[dataTPFNFP$structural_category2 == "FSM",], aes(x = pipeline_performance, y = (..count..), fill = structural_category, alpha=within_CAGE_peak)) +
+  p9A <- ggplot(dataTPFNFP[dataTPFNFP$structural_category2 == "FSM",], aes(x = pipeline_performance, y = after_stat(count), fill = structural_category, alpha=within_CAGE_peak)) +
     geom_bar(position = "stack") +
     facet_grid(. ~ structural_category) +
     scale_alpha_manual(values = c(0.5, 1), name = "Pipeline performance", labels = c("Not supported", "SR support")) +
@@ -758,7 +764,7 @@ if ('within_CAGE_peak' %in% colnames(data.index)){
     theme(axis.title.x = element_blank(),
           axis.title.y = element_blank())
   
-  p9B <- ggplot(dataTPFNFP[dataTPFNFP$structural_category2 != "FSM",], aes(x = pipeline_performance, y = (..count..), fill = structural_category, alpha=within_CAGE_peak)) +
+  p9B <- ggplot(dataTPFNFP[dataTPFNFP$structural_category2 != "FSM",], aes(x = pipeline_performance, y = after_stat(count), fill = structural_category, alpha=within_CAGE_peak)) +
     geom_bar(position = "stack") +
     facet_grid(. ~ structural_category) +
     scale_alpha_manual(values = c(0.5, 1), name = "Pipeline performance", labels = c("Not supported", "CAGE support")) +
@@ -783,7 +789,7 @@ if ('min_cov' %in% colnames(data.index) & 'within_CAGE_peak' %in% colnames(data.
   dataTPFNFP$supp <- factor(dataTPFNFP$supp,
                            levels = c("False", "True"),
                            labels = c("Not fully\nsupported", "SR+CAGE\nsupport"))
-  p10A <- ggplot(dataTPFNFP[dataTPFNFP$structural_category2 == "FSM",], aes(x = pipeline_performance, y = (..count..), fill = structural_category, alpha=supp)) +
+  p10A <- ggplot(dataTPFNFP[dataTPFNFP$structural_category2 == "FSM",], aes(x = pipeline_performance, y = after_stat(count), fill = structural_category, alpha=supp)) +
     geom_bar(position = "stack") +
     facet_grid(. ~ structural_category) +
     scale_alpha_manual(values = c(0.5, 1), name = "Pipeline performance", labels = c("Not supported", "SR + CAGE support")) +
@@ -795,7 +801,7 @@ if ('min_cov' %in% colnames(data.index) & 'within_CAGE_peak' %in% colnames(data.
     theme(axis.title.x = element_blank(),
           axis.title.y = element_blank())
   
-  p10B <- ggplot(dataTPFNFP[dataTPFNFP$structural_category2 != "FSM",], aes(x = pipeline_performance, y = (..count..), fill = structural_category, alpha=supp)) +
+  p10B <- ggplot(dataTPFNFP[dataTPFNFP$structural_category2 != "FSM",], aes(x = pipeline_performance, y = after_stat(count), fill = structural_category, alpha=supp)) +
     geom_bar(position = "stack") +
     facet_grid(. ~ structural_category) +
     scale_alpha_manual(values = c(0.5, 1), name = "Pipeline performance", labels = c("Not supported", "SR support")) +

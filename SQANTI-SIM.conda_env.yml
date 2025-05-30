@@ -22,11 +22,13 @@ dependencies:
   - kallisto
   - last
   - minimap2
+  - nanosim
   - numpy
   - openblas
   - openssl
   - pandoc
   - pbccs
+  - pbsim3
   - perl
   - pip
   - psutil
