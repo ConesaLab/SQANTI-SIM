@@ -187,14 +187,29 @@ def pbsim_simulation(args):
             sys.exit(1)
 
         # Move output files to tmp directory
-        # Handle both compressed and uncompressed PBSIM3 output
+        # Handle both SAM and BAM (compressed and uncompressed) PBSIM3 output
         if os.path.exists("sd.sam.gz"):
             subprocess.check_call("gunzip sd.sam.gz", shell=True)
             os.rename("sd.sam", os.path.join(tmp_dir, "sd.sam"))
+            # convert SAM file to BAM file
+            cmd = "samtools view -bS " + tmp_dir + "/sd.sam > " + tmp_dir + "/sd.bam"
+            if subprocess.check_call(cmd, shell=True) != 0:
+                print("ERROR running samtools: {0}".format(cmd), file=sys.stderr)
+                sys.exit(1)
         elif os.path.exists("sd.sam"):
             os.rename("sd.sam", os.path.join(tmp_dir, "sd.sam"))
+            # convert SAM file to BAM file
+            cmd = "samtools view -bS " + tmp_dir + "/sd.sam > " + tmp_dir + "/sd.bam"
+            if subprocess.check_call(cmd, shell=True) != 0:
+                print("ERROR running samtools: {0}".format(cmd), file=sys.stderr)
+                sys.exit(1)
+        elif os.path.exists("sd.bam.gz"):
+            subprocess.check_call("gunzip sd.bam.gz", shell=True)
+            os.rename("sd.bam", os.path.join(tmp_dir, "sd.bam"))
+        elif os.path.exists("sd.bam"):
+            os.rename("sd.bam", os.path.join(tmp_dir, "sd.bam"))
         else:
-            print("ERROR: No PBSIM3 SAM output found", file=sys.stderr)
+            print("ERROR: No PBSIM3 SAM/BAM output found", file=sys.stderr)
             sys.exit(1)
             
         if os.path.exists("sd.maf.gz"):
@@ -204,12 +219,6 @@ def pbsim_simulation(args):
             os.rename("sd.maf", os.path.join(tmp_dir, "sd.maf"))
         else:
             print("ERROR: No PBSIM3 MAF output found", file=sys.stderr)
-            sys.exit(1)
-
-        # convert sam file to bam file
-        cmd = "samtools view -bS " + tmp_dir + "/sd.sam > " + tmp_dir + "/sd.bam"
-        if subprocess.check_call(cmd, shell=True) != 0:
-            print("ERROR running samtools: {0}".format(cmd), file=sys.stderr)
             sys.exit(1)
 
         # use the ccs program to generate consensus reads (HiFi reads)
