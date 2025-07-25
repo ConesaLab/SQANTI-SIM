@@ -42,7 +42,7 @@ Please refer to [Wiki](https://github.com/ConesaLab/SQANTI-SIM/wiki) for how to 
 
 ## Change Log
 
-Current version (11/02/2024): **0.2.2**
+Current version (25/07/2024): **0.3.0**
 
 Updates, patches and releases:
 

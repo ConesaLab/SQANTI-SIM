@@ -11,7 +11,7 @@ existing long-read RNA-seq simulators such as NanoSim, PBSIM3, and IsoSeqSim.
 Author: Jorge Mestre Tomas (jorge.mestre.tomas@csic.es)
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 import argparse
 import numpy
