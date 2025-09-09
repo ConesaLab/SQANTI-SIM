@@ -133,33 +133,35 @@ def pbsim_simulation(args):
 
         cmd = " ".join(cmd)
         sys.stdout.flush()
-        if subprocess.check_call(cmd, shell=True) != 0:
+        if subprocess.check_call(cmd, shell=True, cwd=tmp_dir) != 0:
             print("ERROR running PBSIM3: {0}".format(cmd), file=sys.stderr)
             sys.exit(1)
 
         # Move output files to tmp directory
         # Handle both compressed and uncompressed PBSIM3 output
-        if os.path.exists("sd.fq.gz"):
-            # Decompress and rename FASTQ file
-            subprocess.check_call("gunzip sd.fq.gz", shell=True)
-            os.rename("sd.fq", os.path.join(tmp_dir, "sd.fastq"))
-        elif os.path.exists("sd.fastq"):
-            os.rename("sd.fastq", os.path.join(tmp_dir, "sd.fastq"))
-        else:
+        fq_gz = os.path.join(tmp_dir, "sd.fq.gz")
+        fq = os.path.join(tmp_dir, "sd.fq")
+        fq_out = os.path.join(tmp_dir, "sd.fastq")
+
+        if os.path.exists(fq_gz):
+            # Decompress FASTQ file
+            subprocess.check_call("gunzip sd.fq.gz", shell=True, cwd=tmp_dir)
+        if os.path.exists(fq):
+            os.rename(fq, fq_out)
+        elif not os.path.exists(fq_out):
             print("ERROR: No PBSIM3 FASTQ output found", file=sys.stderr)
             sys.exit(1)
-            
-        if os.path.exists("sd.maf.gz"):
-            # Decompress and move MAF file
-            subprocess.check_call("gunzip sd.maf.gz", shell=True)
-            os.rename("sd.maf", os.path.join(tmp_dir, "sd.maf"))
-        elif os.path.exists("sd.maf"):
-            os.rename("sd.maf", os.path.join(tmp_dir, "sd.maf"))
-        else:
+
+        maf_gz = os.path.join(tmp_dir, "sd.maf.gz")
+        maf_file = os.path.join(tmp_dir, "sd.maf")  
+
+        if os.path.exists(maf_gz):
+            # Decompress MAF file
+            subprocess.check_call("gunzip sd.maf.gz", shell=True, cwd=tmp_dir)
+        if not os.path.exists(maf_file):
             print("ERROR: No PBSIM3 MAF output found", file=sys.stderr)
             sys.exit(1)
 
-        maf_file = os.path.join(tmp_dir, "sd.maf")
         pbsm_fasta = os.path.join(args.dir, "PBSIM3_simulated.fasta")
         read_to_iso = os.path.join(args.dir, "PBSIM3_simulated.read_to_isoform.tsv")
 
@@ -182,54 +184,48 @@ def pbsim_simulation(args):
 
         cmd = " ".join(cmd)
         sys.stdout.flush()
-        if subprocess.check_call(cmd, shell=True) != 0:
+        if subprocess.check_call(cmd, shell=True, cwd=tmp_dir) != 0:
             print("ERROR running PBSIM3: {0}".format(cmd), file=sys.stderr)
             sys.exit(1)
 
         # Move output files to tmp directory
         # Handle both SAM and BAM (compressed and uncompressed) PBSIM3 output
-        if os.path.exists("sd.sam.gz"):
-            subprocess.check_call("gunzip sd.sam.gz", shell=True)
-            os.rename("sd.sam", os.path.join(tmp_dir, "sd.sam"))
-            # convert SAM file to BAM file
-            cmd = "samtools view -bS " + tmp_dir + "/sd.sam > " + tmp_dir + "/sd.bam"
-            if subprocess.check_call(cmd, shell=True) != 0:
+        sam_gz = os.path.join(tmp_dir, "sd.sam.gz")
+        sam = os.path.join(tmp_dir, "sd.sam")
+        bam_gz = os.path.join(tmp_dir, "sd.bam.gz")
+        bam = os.path.join(tmp_dir, "sd.bam")
+
+        if os.path.exists(sam_gz):
+            subprocess.check_call("gunzip sd.sam.gz", shell=True, cwd=tmp_dir)
+        if os.path.exists(sam):
+            # convert SAM file to BAM file inside tmp_dir
+            cmd = "samtools view -bS sd.sam > sd.bam"
+            if subprocess.check_call(cmd, shell=True, cwd=tmp_dir) != 0:
                 print("ERROR running samtools: {0}".format(cmd), file=sys.stderr)
                 sys.exit(1)
-        elif os.path.exists("sd.sam"):
-            os.rename("sd.sam", os.path.join(tmp_dir, "sd.sam"))
-            # convert SAM file to BAM file
-            cmd = "samtools view -bS " + tmp_dir + "/sd.sam > " + tmp_dir + "/sd.bam"
-            if subprocess.check_call(cmd, shell=True) != 0:
-                print("ERROR running samtools: {0}".format(cmd), file=sys.stderr)
-                sys.exit(1)
-        elif os.path.exists("sd.bam.gz"):
-            subprocess.check_call("gunzip sd.bam.gz", shell=True)
-            os.rename("sd.bam", os.path.join(tmp_dir, "sd.bam"))
-        elif os.path.exists("sd.bam"):
-            os.rename("sd.bam", os.path.join(tmp_dir, "sd.bam"))
-        else:
+        elif os.path.exists(bam_gz):
+            subprocess.check_call("gunzip sd.bam.gz", shell=True, cwd=tmp_dir)
+        elif not os.path.exists(bam):
             print("ERROR: No PBSIM3 SAM/BAM output found", file=sys.stderr)
             sys.exit(1)
-            
-        if os.path.exists("sd.maf.gz"):
-            subprocess.check_call("gunzip sd.maf.gz", shell=True)
-            os.rename("sd.maf", os.path.join(tmp_dir, "sd.maf"))
-        elif os.path.exists("sd.maf"):
-            os.rename("sd.maf", os.path.join(tmp_dir, "sd.maf"))
-        else:
+        
+        maf_gz = os.path.join(tmp_dir, "sd.maf.gz")
+        maf = os.path.join(tmp_dir, "sd.maf")
+        if os.path.exists(maf_gz):
+            subprocess.check_call("gunzip sd.maf.gz", shell=True, cwd=tmp_dir)
+        elif not os.path.exists(maf):
             print("ERROR: No PBSIM3 MAF output found", file=sys.stderr)
             sys.exit(1)
 
         # use the ccs program to generate consensus reads (HiFi reads)
-        cmd = "ccs " + tmp_dir + "/sd.bam " + tmp_dir + "/sd.ccs.bam"
-        if subprocess.check_call(cmd, shell=True) != 0:
+        cmd = "ccs sd.bam sd.ccs.bam"
+        if subprocess.check_call(cmd, shell=True, cwd=tmp_dir) != 0:
             print("ERROR running ccs: {0}".format(cmd), file=sys.stderr)
             sys.exit(1)
 
         # use samtools convert bam to fasta
-        cmd = "samtools fasta " + tmp_dir + "/sd.ccs.bam > " + tmp_dir + "/sd.ccs.fasta"
-        if subprocess.check_call(cmd, shell=True) != 0:
+        cmd = "samtools fasta sd.ccs.bam > sd.ccs.fasta"
+        if subprocess.check_call(cmd, shell=True, cwd=tmp_dir) != 0:
             print("ERROR running samtools: {0}".format(cmd), file=sys.stderr)
             sys.exit(1)
 
@@ -261,7 +257,6 @@ def pbsim_simulation(args):
         pbsm_fasta = os.path.join(args.dir, "PBSIM3_simulated.fasta")
         read_to_iso = os.path.join(args.dir, "PBSIM3_simulated.read_to_isoform.tsv")
         rename_fasta_headers(tmp_dir + "/sample.transcript", tmp_dir + "/sd.ccs.fasta", pbsm_fasta)
-
 
     else:
         print("ERROR: pass_num must be >= 1", file=sys.stderr)
