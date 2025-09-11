@@ -484,7 +484,7 @@ def ont_simulation(args):
 
     # Extract fasta transcripts
     print("[SQANTI-SIM] Extracting transcript sequences")
-    ref_t = os.path.join(os.path.dirname(args.genome), "sqanti-sim.transcripts.fa")
+    ref_t = os.path.join(args.dir, "sqanti-sim.transcripts.fa")
     if os.path.exists(ref_t):
         print("[SQANTI-SIM] WARNING: %s already exists, it will be overwritten" %(ref_t))
 
@@ -532,6 +532,7 @@ def ont_simulation(args):
         print("ERROR running NanoSim: {0}".format(cmd), file=sys.stderr)
         sys.exit(1)
     os.remove(expr_f)
+    os.remove(ref_t)
 
     print("[SQANTI-SIM] Counting and renaming ONT reads")
     fastqs = [
@@ -587,7 +588,7 @@ def illumina_simulation(args):
 
     # Extract fasta transcripts
     print("[SQANTI-SIM] Extracting transcript sequences")
-    ref_t = os.path.join(os.path.dirname(args.genome), "sqanti-sim.transcripts.fa")
+    ref_t = os.path.join(args.dir, "sqanti-sim.transcripts.fa")
     if os.path.exists(ref_t):
         print("[SQANTI-SIM] WARNING: %s already exists, it will be overwritten" %(ref_t))
 
@@ -651,6 +652,7 @@ def illumina_simulation(args):
         )
         sys.exit(1)
     os.remove(expr_f)
+    os.remove(ref_t)
 
     print("[SQANTI-SIM] Counting Illumina reads")
     os.rename(
