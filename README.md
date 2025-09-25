@@ -40,6 +40,44 @@ Please refer to [Wiki](https://github.com/ConesaLab/SQANTI-SIM/wiki) for how to 
 
 - [Tutorial](https://github.com/ConesaLab/SQANTI-SIM/wiki/Tutorial)
 
+## Running Parallel Jobs
+
+SQANTI-SIM supports running multiple simulation jobs in parallel. To avoid potential race conditions when multiple jobs access the same genome file simultaneously, **pre-create the genome index file** before launching parallel jobs:
+
+```bash
+# Pre-create the .fai index file
+samtools faidx genome.fa
+
+# Example: Run parallel jobs with different simulators or parameters
+# Job 1: PBSIM3 simulation
+python sqanti-sim.py sim --pbsim \
+    --genome genome.fa \
+    --gtf annotation.gtf \
+    --trans_index index.tsv \
+    --dir output_pbsim \
+    --cores 1 &
+
+# Job 2: NanoSim ONT simulation
+python sqanti-sim.py sim --ont \
+    --genome genome.fa \
+    --gtf annotation.gtf \
+    --trans_index index.tsv \
+    --dir output_ont \
+    --read_type cDNA &
+
+# Job 3: Different expression profile
+python sqanti-sim.py sim --pbsim \
+    --genome genome.fa \
+    --gtf annotation.gtf \
+    --trans_index index_high_expression.tsv \
+    --dir output_high_expr \
+    --cores 1 &
+
+wait  # Wait for all jobs to complete
+```
+
+This ensures that all temporary files are properly isolated in job-specific directories and prevents file collisions between parallel jobs.
+
 ## Change Log
 
 Current version (25/07/2024): **0.3.0**
