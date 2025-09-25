@@ -80,7 +80,7 @@ This ensures that all temporary files are properly isolated in job-specific dire
 
 ## Change Log
 
-Current version (25/07/2024): **0.3.0**
+Current version (25/09/2025): **0.3.1**
 
 Updates, patches and releases:
 
