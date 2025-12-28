@@ -126,7 +126,7 @@ def pbsim_simulation(args):
             "--strategy", "trans",
             "--method", "qshmm",
             "--qshmm", args.pbsim_model,
-            "--transcript", tmp_dir + "/sample.transcript",
+            "--transcript", "/sample.transcript",
             "--accuracy-mean", "0.95",
             "--seed", str(args.seed)
         ]
@@ -176,7 +176,7 @@ def pbsim_simulation(args):
             "--strategy", "trans",
             "--method", "qshmm",
             "--qshmm", args.pbsim_model,
-            "--transcript", tmp_dir + "/sample.transcript",
+            "--transcript", "/sample.transcript",
             "--accuracy-mean", "0.95",
             "--pass-num", str(args.pass_num),
             "--seed", str(args.seed)
